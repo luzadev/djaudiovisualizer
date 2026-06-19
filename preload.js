@@ -13,6 +13,8 @@ contextBridge.exposeInMainWorld('djv', {
   report: (msg) => ipcRenderer.send('rpt', msg),
   onReport: (cb) => ipcRenderer.on('rpt', (_e, m) => cb(m)),
   // Display management (control window).
+  // Bundled svg/ folder, read in the main process, as same-origin data URLs.
+  listBuiltinSvgs: () => ipcRenderer.invoke('svg:listBuiltin'),
   // Resolve a dropped/picked File to its absolute filesystem path.
   pathForFile: (file) => {
     try { return webUtils.getPathForFile(file); }
@@ -20,5 +22,13 @@ contextBridge.exposeInMainWorld('djv', {
   },
   listDisplays: () => ipcRenderer.invoke('displays:list'),
   moveOutputTo: (id) => ipcRenderer.invoke('output:moveTo', id),
-  toggleOutputFullscreen: () => ipcRenderer.invoke('output:toggleFullscreen')
+  toggleOutputFullscreen: () => ipcRenderer.invoke('output:toggleFullscreen'),
+  // Recording (output streams chunks to main, which muxes/transcodes to MP4).
+  recStart: () => ipcRenderer.invoke('rec:start'),
+  recChunk: (bytes) => ipcRenderer.send('rec:chunk', bytes),
+  recStop: (opts) => ipcRenderer.invoke('rec:stop', opts),
+  openRecordingsFolder: () => ipcRenderer.invoke('rec:openFolder'),
+  // Pad bank persistence.
+  loadPads: () => ipcRenderer.invoke('pads:load'),
+  savePads: (data) => ipcRenderer.invoke('pads:save', data)
 });

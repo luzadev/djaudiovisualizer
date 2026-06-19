@@ -1,5 +1,7 @@
-const { app, BrowserWindow, screen, ipcMain, systemPreferences } = require('electron');
+const { app, BrowserWindow, screen, ipcMain, systemPreferences, shell } = require('electron');
 const path = require('path');
+const fs = require('fs');
+const { execFile } = require('child_process');
 
 let controlWin = null;   // panel with all the controls (primary screen)
 let outputWin = null;    // pure visualization (external screen, fullscreen)
@@ -74,6 +76,9 @@ async function ensureMicAccess() {
 }
 
 app.whenReady().then(async () => {
+  if (process.platform === 'darwin' && app.dock) {
+    try { app.dock.setIcon(path.join(__dirname, 'build', 'icon_1024.png')); } catch (e) { /* non-fatal */ }
+  }
   await ensureMicAccess();
   createWindows();
   app.on('activate', () => {
@@ -96,6 +101,105 @@ ipcMain.on('rpt', (_e, msg) => {
 });
 
 // --- Display management --------------------------------------------------
+
+// --- Recording: receive WebM chunks, mux to MP4 at a chosen aspect ratio ---
+let recStream = null, recTempPath = null;
+
+function ffmpegPath() {
+  const cands = [];
+  try { cands.push(require('ffmpeg-static')); } catch (e) { /* optional */ }
+  cands.push(process.env.FFMPEG, 'ffmpeg',
+    '/opt/homebrew/bin/ffmpeg', '/usr/local/bin/ffmpeg', '/usr/bin/ffmpeg');
+  for (const c of cands) {
+    if (!c) continue;
+    if (c === 'ffmpeg' || fs.existsSync(c)) return c;
+  }
+  return 'ffmpeg';
+}
+
+function transcodeToMp4(input, output, opts) {
+  const w = (opts && opts.w) || 1920;
+  const h = (opts && opts.h) || 1080;
+  // Cover the target frame then centre-crop, so the chosen aspect is filled
+  // without distortion.
+  const vf = `scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h}`;
+  const args = ['-y', '-i', input, '-vf', vf,
+    '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p',
+    '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', output];
+  return new Promise((resolve, reject) => {
+    execFile(ffmpegPath(), args, { maxBuffer: 1 << 24 }, (err, stdout, stderr) => {
+      if (err) reject(new Error('ffmpeg: ' + String(stderr || err.message).slice(-500)));
+      else resolve();
+    });
+  });
+}
+
+function recordingsDir() {
+  const dir = path.join(app.getPath('videos'), 'DJ Visualizer');
+  fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+ipcMain.handle('rec:start', () => {
+  recTempPath = path.join(app.getPath('temp'), 'djv-rec-' + Date.now() + '.webm');
+  recStream = fs.createWriteStream(recTempPath);
+  return true;
+});
+
+ipcMain.on('rec:chunk', (_e, bytes) => {
+  if (recStream && bytes) recStream.write(Buffer.from(bytes));
+});
+
+ipcMain.handle('rec:stop', async (_e, opts) => {
+  if (!recStream) return { ok: false, error: 'Nessuna registrazione attiva' };
+  await new Promise(r => recStream.end(r));
+  const temp = recTempPath;
+  recStream = null; recTempPath = null;
+  try {
+    const stamp = new Date().toISOString().replace(/[:T]/g, '-').slice(0, 19);
+    const outPath = path.join(recordingsDir(), 'rec-' + stamp + '.mp4');
+    await transcodeToMp4(temp, outPath, opts);
+    try { fs.unlinkSync(temp); } catch (e) { /* ignore */ }
+    return { ok: true, path: outPath };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
+ipcMain.handle('rec:openFolder', () => {
+  const dir = recordingsDir();
+  shell.openPath(dir);
+  return dir;
+});
+
+// --- Pad bank persistence ---
+const padsFile = () => path.join(app.getPath('userData'), 'pads.json');
+ipcMain.handle('pads:load', () => {
+  try { return JSON.parse(fs.readFileSync(padsFile(), 'utf8')); } catch (e) { return null; }
+});
+ipcMain.handle('pads:save', (_e, data) => {
+  try { fs.writeFileSync(padsFile(), JSON.stringify(data)); return true; } catch (e) { return false; }
+});
+
+// Read the bundled svg/ folder and return each SVG as a data: URL.
+ipcMain.handle('svg:listBuiltin', () => {
+  try {
+    const dir = path.join(__dirname, 'svg');
+    return fs.readdirSync(dir)
+      .filter(f => f.toLowerCase().endsWith('.svg'))
+      .map(f => {
+        const txt = fs.readFileSync(path.join(dir, f), 'utf8');
+        const dataUrl = 'data:image/svg+xml;base64,' + Buffer.from(txt, 'utf8').toString('base64');
+        const name = f
+          .replace(/\.svg$/i, '')
+          .replace(/-svgrepo-com.*$/i, '')
+          .replace(/^freesvg[\s-]+/i, '')
+          .replace(/[-_]+/g, ' ')
+          .trim();
+        return { name: name || f, dataUrl };
+      });
+  } catch (e) { return []; }
+});
 
 ipcMain.handle('displays:list', () => {
   const primary = screen.getPrimaryDisplay();

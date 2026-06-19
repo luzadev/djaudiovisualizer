@@ -1,6 +1,10 @@
 # DJ Visualizer
 
-App desktop (Electron) per Mac che mostra **frattali e visual astratti reattivi all'audio** su uno schermo esterno. L'audio può arrivare da un **file caricato**, da un **input live** (microfono / line-in) o dall'**audio di sistema** (il tuo set DJ) tramite un device virtuale tipo BlackHole. Puoi sovrapporre **immagini** e **scritte scorrevoli**.
+> di **Dj LuZa** · info@djluza.com
+
+App desktop (Electron) per Mac che mostra **frattali e visual astratti reattivi all'audio** su uno schermo esterno. L'audio può arrivare da un **file caricato** (con **playlist** riordinabile e tasti rapidi), da un **input live** (microfono / line-in) o dall'**audio di sistema** (il tuo set DJ) tramite un device virtuale tipo BlackHole. Puoi sovrapporre **immagini** e **scritte scorrevoli**.
+
+Include un **motore di effetti parametrico**: 16 famiglie di shader × palette di colori × varianti di stile generano **oltre 1500 preset**, con una **sequenza di effetti** (playlist) ad auto-cambio a tempo o sul beat.
 
 ## Due finestre
 
@@ -22,17 +26,26 @@ npm start
 
 | Tasto | Azione |
 |-------|--------|
-| `1` `2` `3` | Cambia scena (Frattale · Plasma · Tunnel) |
-| `F` | Schermo intero |
-| `H` | Mostra/nascondi pannello |
-| `O` | Apri file audio |
-| `I` | Usa input live selezionato |
+| `1`–`9` | Applica i primi 9 effetti della sequenza |
+| `F` | Schermo intero output |
+| `O` | Aggiungi brani alla playlist |
 | `G` | Carica immagini |
 | `T` | Mostra/nascondi testo scorrevole |
 | `← →` | Cambia immagine |
-| `Spazio` | Play/pausa del file |
+| `Spazio` | Play/pausa del brano |
+| tasti personalizzati | Avvio rapido di brani e effetti (assegnabili dal pannello con ⌨) |
 
-Puoi anche **trascinare** un brano (mp3/wav) o delle immagini direttamente sulla finestra.
+Puoi anche **trascinare** brani (mp3/wav) o immagini direttamente sul pannello.
+
+## Effetti
+
+- **Libreria effetti**: oltre 1500 preset filtrabili per famiglia e ricercabili per nome. Clic per applicarli all'istante.
+- **Sequenza effetti**: aggiungi i preset preferiti (➕), riordinali col drag, assegna tasti rapidi, e attiva **Auto-cambio** (a intervallo) o **Sul beat** (cambia a ritmo), con **Shuffle**.
+- **Equalizzatore visual**: regola quanto Bassi/Medi/Alti influenzano la grafica.
+
+## Playlist audio
+
+Carica più brani, riordinali col drag della maniglia ⠿, assegna un tasto rapido a ciascuno (⌨), avvia/pausa per brano (▶/⏸) e attiva **Ripeti** per l'avanzamento automatico a fine traccia.
 
 ## Schermo esterno
 

@@ -45,27 +45,54 @@ body.control {
 #topbar strong { font-size: 15px; letter-spacing: 0.3px; }
 #topbar #status { font-size: 11px; opacity: 0.6; font-variant-numeric: tabular-nums; }
 
-#panel-grid {
-  flex: 1 1 auto;
+/* Tab bar */
+#tabs {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 4px;
+  padding: 8px 10px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  background: rgba(20,20,30,0.45);
+  overflow-x: auto;
+}
+#tabs button {
+  flex: 0 0 auto;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 8px 8px 0 0;
+  padding: 8px 12px;
+  opacity: 0.6;
+  font-size: 13px;
+}
+#tabs button:hover { background: rgba(255,255,255,0.06); opacity: 0.9; }
+#tabs button.active {
+  opacity: 1;
+  background: rgba(110,150,255,0.14);
+  border-bottom-color: #7aa2ff;
+}
+
+#content { flex: 1 1 auto; overflow-y: auto; min-width: 0; }
+
+.tab-panel { display: none; }
+.tab-panel.active {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 12px;
   padding: 14px;
   align-content: start;
-  overflow-y: auto;
-  min-width: 0;
 }
-#panel-grid section {
+.tab-panel section {
   min-width: 0;                 /* allow grid cells to shrink, no overflow */
   background: rgba(255,255,255,0.04);
   border: 1px solid rgba(255,255,255,0.07);
   border-radius: 14px;
   padding: 12px;
 }
-#panel-grid section.span2 { grid-column: 1 / -1; }
+.tab-panel section.span2 { grid-column: 1 / -1; }
 
 @media (max-width: 460px) {
-  #panel-grid { grid-template-columns: 1fr; }
+  .tab-panel.active { grid-template-columns: 1fr; }
 }
 
 body.control label {
@@ -90,6 +117,176 @@ body.control .chk { text-transform: none; letter-spacing: 0; opacity: 0.85; marg
 }
 
 body.control select { width: 100%; max-width: 100%; }
+
+/* Per-band equaliser labels + sliders */
+.band { display: block; }
+#bass-gain { accent-color: #5ad1ff; }
+#mid-gain { accent-color: #7aa2ff; }
+#treble-gain { accent-color: #ff7ad1; }
+.band-bass span, .band-mid span, .band-treble span { color: #fff; }
+
+/* ---- Effect library ---- */
+.effect-list {
+  margin-top: 8px;
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 10px;
+  padding: 4px;
+}
+.fx {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border-radius: 7px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.fx:hover { background: rgba(255,255,255,0.07); }
+.fx.active { background: rgba(110,150,255,0.25); }
+.fx .fx-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fx .fx-add {
+  flex: 0 0 auto;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+}
+#effect-family { flex: 0 0 45%; }
+#effect-search { flex: 1; margin: 0; }
+
+/* ---- Pad bank (5×5 launchpad) ---- */
+.pad-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 6px;
+  margin-top: 8px;
+}
+.pad {
+  position: relative;
+  aspect-ratio: 1 / 1;
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 10px;
+  background: rgba(255,255,255,0.04);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  cursor: pointer;
+  overflow: hidden;
+  padding: 4px;
+  transition: background 0.12s ease, box-shadow 0.12s ease;
+}
+.pad:hover { background: rgba(255,255,255,0.09); }
+.pad.filled { background: rgba(90,120,200,0.18); border-color: rgba(120,150,255,0.4); }
+.pad.active {
+  background: rgba(60,200,120,0.35);
+  border-color: #5ad18a;
+  box-shadow: 0 0 12px rgba(90,230,150,0.55);
+}
+.pad-num { position: absolute; top: 3px; left: 5px; font-size: 9px; opacity: 0.5; }
+.pad-name {
+  font-size: 9.5px;
+  line-height: 1.15;
+  word-break: break-word;
+  max-height: 100%;
+  overflow: hidden;
+  opacity: 0.92;
+}
+.pad-plus { font-size: 22px; opacity: 0.3; }
+.pad-x {
+  position: absolute;
+  top: 1px; right: 2px;
+  background: transparent;
+  border: none;
+  color: #ff8a8a;
+  font-size: 11px;
+  padding: 0 3px;
+  opacity: 0;
+  flex: none;
+  width: auto;
+}
+.pad:hover .pad-x { opacity: 0.9; }
+
+/* ---- Recording status ---- */
+.rec-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  font-size: 13px;
+}
+#rec-dot { width: 12px; height: 12px; border-radius: 50%; flex: 0 0 auto; }
+#rec-dot.off { background: #555; }
+#rec-dot.on { background: #ff3b30; box-shadow: 0 0 10px #ff3b30; animation: recpulse 1s infinite; }
+#rec-time { margin-left: auto; font-variant-numeric: tabular-nums; opacity: 0.85; }
+@keyframes recpulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+
+/* ---- SVG quick-pick chips ---- */
+.svg-grid { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.svg-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  padding: 4px 8px;
+}
+.svg-chip img {
+  width: 26px; height: 26px;
+  object-fit: contain;
+  background: #9aa3b2;
+  border-radius: 5px;
+  padding: 2px;
+}
+.svg-chip span {
+  font-size: 11px;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---- Playlist ---- */
+.playlist { list-style: none; margin: 8px 0 0; padding: 0; }
+.hint-mini { font-size: 10px; opacity: 0.45; margin-top: 6px; }
+
+.track {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  margin-bottom: 5px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 9px;
+  font-size: 12px;
+}
+.track.playing {
+  background: rgba(110,150,255,0.22);
+  border-color: rgba(120,170,255,0.6);
+}
+.track.dragging { opacity: 0.4; }
+.track .grip { cursor: grab; opacity: 0.4; font-size: 14px; }
+.track .tname {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.track button {
+  flex: 0 0 auto;
+  padding: 3px 8px;
+  border-radius: 7px;
+  font-size: 11px;
+}
+.track .key-btn {
+  min-width: 30px;
+  font-weight: 700;
+  background: rgba(255,255,255,0.1);
+}
+.track .play-btn { color: #8ef0b0; }
+.track .del-btn { color: #ff8a8a; }
 
 /* ============ OUTPUT WINDOW ============ */
 body.output { cursor: none; background: #000; }
@@ -117,6 +314,20 @@ body.output { cursor: none; background: #000; }
   filter: drop-shadow(0 0 30px rgba(0,0,0,0.6));
 }
 #overlay-images img.show { opacity: 1; }
+
+/* ---- Independent logos ---- */
+.logo {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  width: 20vw;
+  transform: translate(-50%, -50%);
+  z-index: 5;
+  pointer-events: none;
+  display: none;
+  filter: drop-shadow(0 0 18px rgba(0,0,0,0.45));
+}
+.logo.show { display: block; }
 
 /* ---- Scrolling text ticker ---- */
 #ticker {

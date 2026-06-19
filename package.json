@@ -3,7 +3,10 @@
   "version": "1.0.0",
   "description": "Audio-reactive fractal & abstract visualizer for external display (Mac)",
   "main": "main.js",
-  "author": "",
+  "author": {
+    "name": "Dj LuZa",
+    "email": "info@djluza.com"
+  },
   "license": "MIT",
   "scripts": {
     "start": "electron .",
@@ -12,14 +15,17 @@
   "build": {
     "appId": "com.djvisualizer.app",
     "productName": "DJ Visualizer",
+    "copyright": "© Dj LuZa",
     "mac": {
       "category": "public.app-category.music",
-      "target": "dmg"
+      "target": "dmg",
+      "icon": "build/icon.icns"
     },
     "files": [
       "main.js",
       "preload.js",
-      "src/**/*"
+      "src/**/*",
+      "svg/**/*"
     ]
   },
   "devDependencies": {

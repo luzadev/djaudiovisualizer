@@ -10,100 +10,245 @@
 <body class="control">
   <header id="topbar">
     <strong>🎛 DJ Visualizer</strong>
-    <span id="status"><span id="fps">–</span> · <span id="scene-name">Frattale</span></span>
+    <span id="status"><span id="fps">–</span> · <span id="scene-name">—</span></span>
   </header>
 
-  <main id="panel-grid">
+  <nav id="tabs">
+    <button data-tab="audio" class="active">🎵 Audio</button>
+    <button data-tab="effetti">🌀 Effetti</button>
+    <button data-tab="pad">🎹 Pad</button>
+    <button data-tab="immagini">🖼 Immagini</button>
+    <button data-tab="testo">🔤 Testo</button>
+    <button data-tab="registra">🔴 Registra</button>
+    <button data-tab="schermo">🖥 Schermo</button>
+  </nav>
 
-    <section>
-      <label>Sorgente audio</label>
-      <div class="row">
-        <button id="btn-file">📂 File…</button>
-        <button id="btn-play" disabled>⏸ Pausa</button>
-      </div>
-      <input type="file" id="file-input" accept="audio/*" hidden />
-      <div class="row">
+  <main id="content">
+
+    <!-- ============ AUDIO ============ -->
+    <div class="tab-panel active" data-tab="audio">
+      <section>
+        <label>Sorgente audio</label>
+        <button id="btn-play" class="wide" disabled>⏸ Pausa</button>
+        <label>Input live</label>
         <select id="device-select"><option value="">— Input live (mic/line/BlackHole) —</option></select>
-      </div>
-      <button id="btn-use-input" class="wide">🎤 Usa input selezionato</button>
-    </section>
+        <button id="btn-use-input" class="wide">🎤 Usa input selezionato</button>
+        <label>Uscita audio (casse)</label>
+        <select id="output-select"><option value="">— Uscita predefinita —</option></select>
+      </section>
 
-    <section>
-      <label>Schermo di output</label>
-      <select id="display-select"></select>
-      <div class="row">
-        <button id="btn-display">📺 Manda al monitor</button>
-        <button id="btn-fullscreen">⛶ Fullscreen</button>
-      </div>
-    </section>
+      <section class="meters">
+        <label>Livelli</label>
+        <div class="meter"><span>BASS</span><div class="bar"><i id="m-bass"></i></div></div>
+        <div class="meter"><span>MID</span><div class="bar"><i id="m-mid"></i></div></div>
+        <div class="meter"><span>HIGH</span><div class="bar"><i id="m-treble"></i></div></div>
+      </section>
 
-    <section class="span2">
-      <label>Scena</label>
-      <div id="scene-buttons" class="scene-grid"></div>
-    </section>
+      <section class="span2">
+        <label>Playlist <span id="playlist-count">0 brani</span></label>
+        <div class="row">
+          <button id="btn-add-tracks">➕ Aggiungi brani</button>
+          <button id="btn-clear-playlist">🗑 Svuota</button>
+          <label class="chk"><input type="checkbox" id="repeat-playlist" /> Ripeti</label>
+        </div>
+        <input type="file" id="tracks-input" accept="audio/*" multiple hidden />
+        <ol id="playlist" class="playlist"></ol>
+        <div class="hint-mini">Trascina ⠿ per riordinare · ⌨ tasto rapido · ▶/⏸ avvia/pausa</div>
+      </section>
 
-    <section>
-      <label>Reattività <span id="gain-val">1.0×</span></label>
-      <input type="range" id="gain" min="0" max="3" step="0.05" value="1" />
-      <label>Velocità <span id="speed-val">1.0×</span></label>
-      <input type="range" id="speed" min="0" max="3" step="0.05" value="1" />
-    </section>
+      <section>
+        <label>Reattività <span id="gain-val">1.0×</span></label>
+        <input type="range" id="gain" min="0" max="3" step="0.05" value="1" />
+        <label>Velocità <span id="speed-val">1.0×</span></label>
+        <input type="range" id="speed" min="0" max="3" step="0.05" value="1" />
+      </section>
 
-    <section class="meters">
-      <label>Livelli</label>
-      <div class="meter"><span>BASS</span><div class="bar"><i id="m-bass"></i></div></div>
-      <div class="meter"><span>MID</span><div class="bar"><i id="m-mid"></i></div></div>
-      <div class="meter"><span>HIGH</span><div class="bar"><i id="m-treble"></i></div></div>
-    </section>
+      <section>
+        <label>Equalizzatore visual</label>
+        <label class="band band-bass">Bassi <span id="bass-gain-val">1.0×</span></label>
+        <input type="range" id="bass-gain" min="0" max="3" step="0.05" value="1" />
+        <label class="band band-mid">Medi <span id="mid-gain-val">1.0×</span></label>
+        <input type="range" id="mid-gain" min="0" max="3" step="0.05" value="1" />
+        <label class="band band-treble">Alti <span id="treble-gain-val">1.0×</span></label>
+        <input type="range" id="treble-gain" min="0" max="3" step="0.05" value="1" />
+      </section>
+    </div>
 
-    <section>
-      <label>Immagini overlay</label>
-      <div class="row">
-        <button id="btn-images">🖼 Carica…</button>
-        <button id="btn-images-clear">Pulisci</button>
-      </div>
-      <input type="file" id="image-input" accept="image/*" multiple hidden />
-      <div class="row">
-        <label class="chk"><input type="checkbox" id="img-slideshow" /> Slideshow</label>
-        <label class="chk"><input type="checkbox" id="img-beat" checked /> Pulsa beat</label>
-      </div>
-      <label>Dimensione <span id="img-size-val">70%</span></label>
-      <input type="range" id="img-size" min="10" max="100" step="1" value="70" />
-      <label>Durata slideshow <span id="img-interval-val">5.0s</span></label>
-      <input type="range" id="img-interval" min="1" max="20" step="0.5" value="5" />
-      <label>Fusione</label>
-      <select id="img-blend">
-        <option value="screen">screen (luminoso)</option>
-        <option value="normal">normale</option>
-        <option value="overlay">overlay</option>
-        <option value="multiply">multiply</option>
-        <option value="lighten">lighten</option>
-      </select>
-    </section>
+    <!-- ============ EFFETTI ============ -->
+    <div class="tab-panel" data-tab="effetti">
+      <section class="span2" id="effects-section">
+        <label>Libreria effetti <span id="effects-count"></span></label>
+        <div class="row">
+          <select id="effect-family"><option value="-1">Tutte le famiglie</option></select>
+          <input type="text" id="effect-search" class="textfield" placeholder="Cerca effetto…" />
+        </div>
+        <div id="effect-list" class="effect-list"></div>
+      </section>
 
-    <section>
-      <label>Testo scorrevole</label>
-      <input type="text" id="ticker-text" class="textfield" placeholder="Es. NOME DJ · EVENTO" />
-      <div class="row">
-        <label class="chk"><input type="checkbox" id="ticker-on" /> Mostra</label>
-        <select id="ticker-pos">
-          <option value="bottom">Basso</option>
-          <option value="top">Alto</option>
-          <option value="middle">Centro</option>
+      <section class="span2" id="svg-section">
+        <label>Effetti SVG / immagini</label>
+        <select id="svg-select"><option value="-1">— Scegli una sagoma… —</option></select>
+        <button id="btn-svg-load" class="wide">📂 Carica un SVG/immagine…</button>
+        <input type="file" id="svg-input" accept="image/svg+xml,image/*" hidden />
+        <div class="hint-mini">Scegli una sagoma → diventa un effetto reattivo. Per cambiare colori/stile filtra la libreria su “SVG/Immagine”.</div>
+      </section>
+
+      <section class="span2" id="effect-seq-section">
+        <label>Sequenza effetti <span id="seq-count">0 in sequenza</span></label>
+        <div class="row">
+          <button id="btn-seq-add">➕ Aggiungi corrente</button>
+          <button id="btn-seq-clear">🗑 Svuota</button>
+        </div>
+        <div class="row">
+          <label class="chk"><input type="checkbox" id="seq-auto" /> Auto-cambio</label>
+          <label class="chk"><input type="checkbox" id="seq-beat" /> Sul beat</label>
+          <label class="chk"><input type="checkbox" id="seq-shuffle" /> Shuffle</label>
+        </div>
+        <label>Intervallo auto-cambio <span id="seq-interval-val">8.0s</span></label>
+        <input type="range" id="seq-interval" min="1" max="60" step="0.5" value="8" />
+        <ol id="effect-seq" class="playlist"></ol>
+        <div class="hint-mini">Clic in libreria = applica · ➕ = in sequenza · ⌨ tasto rapido · 1-9 = primi 9</div>
+      </section>
+    </div>
+
+    <!-- ============ PAD ============ -->
+    <div class="tab-panel" data-tab="pad">
+      <section class="span2">
+        <label>Pad — 20 brani al volo (5×4, salvati automaticamente)</label>
+        <div class="row">
+          <button id="btn-pad-stop">⏹ Stop</button>
+          <button id="btn-pad-clear">🗑 Svuota tutti</button>
+        </div>
+        <div id="pad-grid" class="pad-grid"></div>
+        <input type="file" id="pad-input" accept="audio/*" hidden />
+        <div class="hint-mini">Clic su un pad vuoto (o trascina un brano) per assegnarlo · clic su un pad pieno per avviarlo · premendone un altro ferma quello in corso · <b>tasto destro</b> per ricaricare · ✕ per svuotare.</div>
+      </section>
+    </div>
+
+    <!-- ============ IMMAGINI ============ -->
+    <div class="tab-panel" data-tab="immagini">
+      <section>
+        <label>Immagini overlay</label>
+        <div class="row">
+          <button id="btn-images">🖼 Carica…</button>
+          <button id="btn-images-clear">Pulisci</button>
+        </div>
+        <input type="file" id="image-input" accept="image/*" multiple hidden />
+        <div class="row">
+          <label class="chk"><input type="checkbox" id="img-slideshow" /> Slideshow</label>
+          <label class="chk"><input type="checkbox" id="img-beat" checked /> Pulsa beat</label>
+        </div>
+        <label>Dimensione <span id="img-size-val">70%</span></label>
+        <input type="range" id="img-size" min="10" max="100" step="1" value="70" />
+        <label>Durata slideshow <span id="img-interval-val">5.0s</span></label>
+        <input type="range" id="img-interval" min="1" max="20" step="0.5" value="5" />
+        <label>Fusione</label>
+        <select id="img-blend">
+          <option value="screen">screen (luminoso)</option>
+          <option value="normal">normale</option>
+          <option value="overlay">overlay</option>
+          <option value="multiply">multiply</option>
+          <option value="lighten">lighten</option>
         </select>
-      </div>
-      <label>Velocità testo <span id="ticker-speed-val">1.0×</span></label>
-      <input type="range" id="ticker-speed" min="0.2" max="4" step="0.1" value="1" />
-    </section>
+      </section>
+
+      <section class="logo-ctl" data-logo="0">
+        <label>Logo 1</label>
+        <div class="row">
+          <button class="logo-load" data-logo="0">🖼 Carica</button>
+          <button class="logo-clear" data-logo="0">Rimuovi</button>
+        </div>
+        <input type="file" class="logo-input" data-logo="0" accept="image/*" hidden />
+        <label>Orizzontale <span class="logo-x-val">50%</span></label>
+        <input type="range" class="logo-x" data-logo="0" min="0" max="100" step="0.5" value="50" />
+        <label>Verticale <span class="logo-y-val">50%</span></label>
+        <input type="range" class="logo-y" data-logo="0" min="0" max="100" step="0.5" value="50" />
+        <label>Dimensione <span class="logo-size-val">20%</span></label>
+        <input type="range" class="logo-size" data-logo="0" min="2" max="80" step="0.5" value="20" />
+        <label>Opacità <span class="logo-op-val">100%</span></label>
+        <input type="range" class="logo-op" data-logo="0" min="0" max="100" step="1" value="100" />
+      </section>
+
+      <section class="logo-ctl" data-logo="1">
+        <label>Logo 2</label>
+        <div class="row">
+          <button class="logo-load" data-logo="1">🖼 Carica</button>
+          <button class="logo-clear" data-logo="1">Rimuovi</button>
+        </div>
+        <input type="file" class="logo-input" data-logo="1" accept="image/*" hidden />
+        <label>Orizzontale <span class="logo-x-val">50%</span></label>
+        <input type="range" class="logo-x" data-logo="1" min="0" max="100" step="0.5" value="50" />
+        <label>Verticale <span class="logo-y-val">50%</span></label>
+        <input type="range" class="logo-y" data-logo="1" min="0" max="100" step="0.5" value="50" />
+        <label>Dimensione <span class="logo-size-val">20%</span></label>
+        <input type="range" class="logo-size" data-logo="1" min="2" max="80" step="0.5" value="20" />
+        <label>Opacità <span class="logo-op-val">100%</span></label>
+        <input type="range" class="logo-op" data-logo="1" min="0" max="100" step="1" value="100" />
+      </section>
+    </div>
+
+    <!-- ============ TESTO ============ -->
+    <div class="tab-panel" data-tab="testo">
+      <section class="span2">
+        <label>Testo scorrevole</label>
+        <input type="text" id="ticker-text" class="textfield" placeholder="Es. NOME DJ · EVENTO" />
+        <div class="row">
+          <label class="chk"><input type="checkbox" id="ticker-on" /> Mostra</label>
+          <select id="ticker-pos">
+            <option value="bottom">Basso</option>
+            <option value="top">Alto</option>
+            <option value="middle">Centro</option>
+          </select>
+        </div>
+        <label>Velocità testo <span id="ticker-speed-val">1.0×</span></label>
+        <input type="range" id="ticker-speed" min="0.2" max="4" step="0.1" value="1" />
+      </section>
+    </div>
+
+    <!-- ============ REGISTRA ============ -->
+    <div class="tab-panel" data-tab="registra">
+      <section class="span2">
+        <label>Registrazione output → MP4</label>
+        <div class="rec-status">
+          <span id="rec-dot" class="off"></span>
+          <span id="rec-label">Pronto</span>
+          <span id="rec-time">00:00</span>
+        </div>
+        <label>Formato</label>
+        <select id="rec-aspect">
+          <option value="1920x1080">16:9 orizzontale (1920×1080)</option>
+          <option value="1080x1920">9:16 verticale (1080×1920)</option>
+          <option value="1080x1080">1:1 quadrato (1080×1080)</option>
+          <option value="1440x1080">4:3 (1440×1080)</option>
+          <option value="1080x1440">3:4 verticale (1080×1440)</option>
+          <option value="2560x1080">21:9 cinema (2560×1080)</option>
+        </select>
+        <button id="btn-rec" class="wide">🔴 Avvia registrazione</button>
+        <button id="btn-rec-folder" class="wide">📁 Apri cartella registrazioni</button>
+        <div class="hint-mini">Registra ciò che vedi sull'output + l'audio (file o input live). Salvataggio in <b>Filmati ▸ DJ Visualizer</b>. La conversione in MP4 avviene allo stop.</div>
+      </section>
+    </div>
+
+    <!-- ============ SCHERMO ============ -->
+    <div class="tab-panel" data-tab="schermo">
+      <section class="span2">
+        <label>Schermo di output</label>
+        <select id="display-select"></select>
+        <div class="row">
+          <button id="btn-display">📺 Manda al monitor</button>
+          <button id="btn-fullscreen">⛶ Fullscreen</button>
+        </div>
+      </section>
+    </div>
 
   </main>
 
   <footer id="hints">
-    <kbd>1</kbd>–<kbd>8</kbd> scene · <kbd>F</kbd> fullscreen output · <kbd>O</kbd> file ·
-    <kbd>← →</kbd> immagini · <kbd>Spazio</kbd> play/pausa
+    <kbd>1</kbd>–<kbd>9</kbd> effetti in sequenza · <kbd>F</kbd> fullscreen · <kbd>O</kbd> aggiungi brani ·
+    <kbd>← →</kbd> immagini · <kbd>Spazio</kbd> play/pausa · tasti rapidi personalizzabili
   </footer>
 
-  <script src="shaders.js"></script>
+  <script src="effects.js"></script>
   <script src="control.js"></script>
 </body>
 </html>
