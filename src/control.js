@@ -402,7 +402,7 @@ $('#btn-rec-folder').addEventListener('click', () => djv.openRecordingsFolder())
 // ---------------------------------------------------------------- pad bank
 const PAD_COUNT = 20; // 5 × 4
 let pads = new Array(PAD_COUNT).fill(null);   // each: { path, name } or null
-let activePad = -1, padPlaying = false, padLoadTarget = -1;
+let activePad = -1, padPlaying = false, padLoadTarget = -1, padCapturing = -1;
 const padGrid = $('#pad-grid');
 
 function savePadState() { if (djv.savePads) djv.savePads(pads); }
@@ -415,7 +415,10 @@ function renderPads() {
     d.className = 'pad' + (p ? ' filled' : '') + (i === activePad && padPlaying ? ' active' : '');
     d.dataset.i = i;
     d.innerHTML = '<span class="pad-num">' + (i + 1) + '</span>' +
-      (p ? '<span class="pad-name">' + p.name.replace(/&/g, '&amp;').replace(/</g, '&lt;') + '</span><button class="pad-x" title="Svuota">✕</button>'
+      (p ? '<span class="pad-name">' + p.name.replace(/&/g, '&amp;').replace(/</g, '&lt;') + '</span>' +
+           '<button class="pad-x" title="Svuota">✕</button>' +
+           '<button class="pad-key" title="Assegna tasto rapido">' +
+             (padCapturing === i ? '…' : (p.key ? p.key.toUpperCase() : '⌨')) + '</button>'
          : '<span class="pad-plus">＋</span>');
     padGrid.appendChild(d);
   });
@@ -452,6 +455,7 @@ padGrid.addEventListener('click', (e) => {
   if (!pad) return;
   const i = parseInt(pad.dataset.i, 10);
   if (e.target.closest('.pad-x')) { e.stopPropagation(); clearPad(i); return; }
+  if (e.target.closest('.pad-key')) { e.stopPropagation(); padCapturing = padCapturing === i ? -1 : i; renderPads(); return; }
   playPad(i);
 });
 padGrid.addEventListener('contextmenu', (e) => {
@@ -568,6 +572,19 @@ window.addEventListener('keydown', (e) => {
     renderSequence();
     return;
   }
+  // Assigning a hotkey to a pad.
+  if (padCapturing >= 0) {
+    e.preventDefault();
+    if (e.key !== 'Escape' && e.key.length === 1) {
+      const k = e.key.toLowerCase();
+      pads.forEach(p => { if (p && p.key === k) p.key = null; }); // keys are unique
+      if (pads[padCapturing]) pads[padCapturing].key = k;
+      savePadState();
+    }
+    padCapturing = -1;
+    renderPads();
+    return;
+  }
 
   if (e.target.tagName === 'INPUT' && e.target.type === 'text') return;
 
@@ -577,6 +594,8 @@ window.addEventListener('keydown', (e) => {
   if (hk >= 0) { playIndex(hk); return; }
   const ek = sequence.findIndex(s => s.key === lk);
   if (ek >= 0) { applySeqIndex(ek); return; }
+  const pk = pads.findIndex(p => p && p.key === lk);
+  if (pk >= 0) { playPad(pk); return; }
 
   // Number keys 1-9 apply the first nine sequence slots.
   if (e.key >= '1' && e.key <= '9') { applySeqIndex(parseInt(e.key, 10) - 1); return; }

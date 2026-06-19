@@ -207,6 +207,24 @@ body.control select { width: 100%; max-width: 100%; }
   width: auto;
 }
 .pad:hover .pad-x { opacity: 0.9; }
+.pad-key {
+  position: absolute;
+  bottom: 2px;
+  right: 3px;
+  background: rgba(255,255,255,0.12);
+  border: none;
+  color: #cdd6ff;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 4px;
+  min-width: 14px;
+  width: auto;
+  flex: none;
+  opacity: 0.85;
+}
+.pad-key:hover { background: rgba(120,150,255,0.45); }
 
 /* ---- Recording status ---- */
 .rec-status {
