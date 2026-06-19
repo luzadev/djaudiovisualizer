@@ -525,6 +525,7 @@ $('#video-blend').addEventListener('change', (e) => send({ type: 'videoBlend', v
 $('#ticker-text').addEventListener('input', (e) => send({ type: 'tickerText', text: e.target.value.replace(/\s*\n\s*/g, ' · ') }));
 $('#ticker-on').addEventListener('change', (e) => send({ type: 'tickerOn', on: e.target.checked }));
 $('#ticker-pos').addEventListener('change', (e) => send({ type: 'tickerPos', pos: e.target.value }));
+$('#ticker-dir').addEventListener('change', (e) => send({ type: 'tickerDir', value: e.target.value }));
 $('#ticker-speed').addEventListener('input', (e) => {
   const m = parseFloat(e.target.value);
   $('#ticker-speed-val').textContent = m.toFixed(1) + '×';

@@ -247,6 +247,7 @@ function setTickerText(t) { const h = buildLetters(t); tickCopies.forEach(c => c
 function setTickerSpeed(m) { tickerTrack.style.setProperty('--ticker-dur', (18 / m) + 's'); }
 function tickerLetters() { return tickerTrack.querySelectorAll('.tl'); }
 ticker.classList.add('pos-bottom');
+ticker.classList.add('dir-h');
 setTickerSpeed(1);
 
 function hideHint() { $('#drop-hint').classList.add('hidden'); }
@@ -382,6 +383,10 @@ djv.onControl(async (m) => {
       ticker.classList.add('pos-' + m.pos);
       break;
     case 'tickerSpeed': setTickerSpeed(m.mult); break;
+    case 'tickerDir':
+      ticker.classList.remove('dir-h', 'dir-vup', 'dir-vdown');
+      ticker.classList.add('dir-' + m.value);
+      break;
     case 'tickerFont': tickerTrack.style.fontFamily = m.value; break;
     case 'tickerSize': tickerTrack.style.fontSize = m.value + 'vh'; break;
     case 'tickerWeight': tickerTrack.style.fontWeight = m.on ? '800' : '400'; break;

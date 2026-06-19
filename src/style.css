@@ -484,9 +484,38 @@ body.output { cursor: none; background: #000; }
   font-weight: 800;
   color: #fff;
   text-transform: uppercase;
-  animation: ticker-scroll var(--ticker-dur, 18s) linear infinite;
 }
 .tick-copy { display: inline-flex; padding: 0 2vw; }
+
+/* Horizontal scroll (default) */
+#ticker.dir-h #ticker-track {
+  animation: ticker-scroll var(--ticker-dur, 18s) linear infinite;
+}
+
+/* Vertical scroll: full-height column, the two copies stacked and scrolling */
+#ticker.dir-vup, #ticker.dir-vdown {
+  top: 0 !important;
+  bottom: 0 !important;
+  height: 100vh;
+  padding: 0;
+  background: none;
+  transform: none !important;
+}
+#ticker.dir-vup.show, #ticker.dir-vdown.show {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+}
+#ticker.dir-vup #ticker-track, #ticker.dir-vdown #ticker-track {
+  flex-direction: column;
+  align-items: center;
+  white-space: nowrap;
+}
+#ticker.dir-vup .tick-copy, #ticker.dir-vdown .tick-copy { padding: 32vh 0; }
+#ticker.dir-vup #ticker-track { animation: ticker-scroll-vup var(--ticker-dur, 18s) linear infinite; }
+#ticker.dir-vdown #ticker-track { animation: ticker-scroll-vdown var(--ticker-dur, 18s) linear infinite; }
+@keyframes ticker-scroll-vup { from { transform: translateY(0); } to { transform: translateY(-50%); } }
+@keyframes ticker-scroll-vdown { from { transform: translateY(-50%); } to { transform: translateY(0); } }
 .tl {
   display: inline-block;
   white-space: pre;
