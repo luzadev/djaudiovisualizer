@@ -97,20 +97,22 @@ function composeFrame() {
   recCtx.globalAlpha = 1;
 
   if (ticker.classList.contains('show')) {
-    for (const span of tickerSpans) {
+    recCtx.textBaseline = 'middle';
+    for (const span of tickerLetters()) {
       const txt = span.textContent;
-      if (!txt) continue;
+      if (!txt || txt === ' ') continue;
       const r = span.getBoundingClientRect();
       if (r.right < 0 || r.left > window.innerWidth) continue;
       const cs = getComputedStyle(span);
+      recCtx.globalAlpha = parseFloat(cs.opacity) || 1;
       recCtx.font = cs.fontWeight + ' ' + (parseFloat(cs.fontSize) * sy) + 'px ' + cs.fontFamily;
       recCtx.fillStyle = cs.color;
-      recCtx.textBaseline = 'middle';
       recCtx.shadowColor = 'rgba(140,180,255,0.9)';
-      recCtx.shadowBlur = 16 * sy;
+      recCtx.shadowBlur = 14 * sy;
       recCtx.fillText(txt, r.x * sx, (r.y + r.height / 2) * sy);
       recCtx.shadowBlur = 0;
     }
+    recCtx.globalAlpha = 1;
   }
   composeRAF = requestAnimationFrame(composeFrame);
 }
@@ -195,15 +197,41 @@ function setLogo(i, url) {
 
 const ticker = $('#ticker');
 const tickerTrack = $('#ticker-track');
-const tickerSpans = ticker.querySelectorAll('span');
-function setTickerText(t) { tickerSpans.forEach(s => s.textContent = t + '   •   '); }
+const tickCopies = ticker.querySelectorAll('.tick-copy');
+function buildLetters(txt) {
+  const full = (txt || '') + '   •   ';
+  let html = '';
+  for (let i = 0; i < full.length; i++) {
+    const c = full[i];
+    const ch = c === ' ' ? ' ' : c.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+    html += '<span class="tl" style="--i:' + i + '">' + ch + '</span>';
+  }
+  return html;
+}
+function setTickerText(t) { const h = buildLetters(t); tickCopies.forEach(c => c.innerHTML = h); }
 function setTickerSpeed(m) { tickerTrack.style.setProperty('--ticker-dur', (18 / m) + 's'); }
+function tickerLetters() { return tickerTrack.querySelectorAll('.tl'); }
 ticker.classList.add('pos-bottom');
 setTickerSpeed(1);
 
 function hideHint() { $('#drop-hint').classList.add('hidden'); }
 
 // ---------------------------------------------------------------- audio devices
+// Probe duration (metadata only) for a list of file paths.
+function probeDurations(paths) {
+  if (!paths.length) return;
+  const results = [];
+  let pending = paths.length;
+  const finish = () => { if (--pending === 0) djv.report({ type: 'durations', list: results }); };
+  paths.forEach(p => {
+    const a = new Audio();
+    a.preload = 'metadata';
+    a.onloadedmetadata = () => { results.push({ path: p, duration: isFinite(a.duration) ? a.duration : 0 }); finish(); };
+    a.onerror = () => { results.push({ path: p, duration: 0 }); finish(); };
+    a.src = toFileURL(p);
+  });
+}
+
 async function reportDevices() {
   try {
     const inputs = await audio.listInputDevices();
@@ -239,11 +267,12 @@ djv.onControl(async (m) => {
     case 'playTrack':
       try {
         audio.onEnded = () => djv.report({ type: 'trackEnded' });
-        await audio.loadFile(toFileURL(m.path), { loop: false });
+        await audio.loadFile(toFileURL(m.path), { loop: false, crossfade: m.crossfade || 0 });
         hideHint();
         djv.report({ type: 'playState', playing: true });
       } catch (e) { djv.report({ type: 'error', message: e.message }); }
       break;
+    case 'probeDurations': probeDurations(m.paths || []); break;
     case 'togglePlay': {
       const playing = audio.togglePlay();
       if (playing !== null) djv.report({ type: 'playState', playing });
@@ -278,12 +307,20 @@ djv.onControl(async (m) => {
       ticker.classList.add('pos-' + m.pos);
       break;
     case 'tickerSpeed': setTickerSpeed(m.mult); break;
+    case 'tickerFont': tickerTrack.style.fontFamily = m.value; break;
+    case 'tickerSize': tickerTrack.style.fontSize = m.value + 'vh'; break;
+    case 'tickerWeight': tickerTrack.style.fontWeight = m.on ? '800' : '400'; break;
+    case 'tickerColor': tickerTrack.style.color = m.value; break;
+    case 'tickerFx':
+      tickerTrack.classList.remove('fx-updown', 'fx-wave', 'fx-zoom', 'fx-flash', 'fx-rotate');
+      if (m.value && m.value !== 'none') tickerTrack.classList.add('fx-' + m.value);
+      break;
   }
 });
 
 // ---------------------------------------------------------------- render loop
 const startTime = performance.now();
-let frames = 0, fpsT = performance.now(), fps = 0, lastReport = 0, prevBeat = 0;
+let frames = 0, fpsT = performance.now(), fps = 0, lastReport = 0, prevBeat = 0, lastProgress = 0;
 
 function frame() {
   const t = (performance.now() - startTime) / 1000;
@@ -307,6 +344,14 @@ function frame() {
   if (now - lastReport > 66) {
     lastReport = now;
     djv.report({ type: 'meters', bass: a.bass, mid: a.mid, treble: a.treble, fps });
+  }
+  // Playback progress for the currently playing file.
+  if (now - lastProgress > 400) {
+    lastProgress = now;
+    const el = audio.mediaEl;
+    if (el && !el.paused && isFinite(el.duration) && el.duration > 0) {
+      djv.report({ type: 'progress', currentTime: el.currentTime, duration: el.duration });
+    }
   }
   requestAnimationFrame(frame);
 }

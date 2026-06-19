@@ -29,6 +29,7 @@ class AudioEngine {
     } catch (e) { /* ConstantSource unsupported: live/file audio still flows */ }
 
     this.sourceNode = null;   // current MediaElement / MediaStream source
+    this.sourceGain = null;   // per-source gain (for crossfades)
     this.mediaEl = null;      // <audio> element when playing a file
     this.stream = null;       // MediaStream when using live input
     this.mode = 'none';
@@ -53,28 +54,53 @@ class AudioEngine {
 
   _disconnectSource() {
     if (this.sourceNode) { try { this.sourceNode.disconnect(); } catch (e) {} this.sourceNode = null; }
+    if (this.sourceGain) { try { this.sourceGain.disconnect(); } catch (e) {} this.sourceGain = null; }
     if (this.mediaEl) { this.mediaEl.pause(); this.mediaEl.src = ''; this.mediaEl = null; }
     if (this.stream) { this.stream.getTracks().forEach(t => t.stop()); this.stream = null; }
   }
 
   // Play a File/Blob, or a src URL (e.g. file://…), through the analyser and
-  // the speakers. opts.loop controls looping (default true for a single file).
+  // the speakers. opts.loop controls looping; opts.crossfade (ms) fades the
+  // previous file out while the new one fades in.
   async loadFile(fileOrSrc, opts = {}) {
     this.resume();
-    this._disconnectSource();
+    const fadeMs = Math.max(0, opts.crossfade || 0);
 
     const el = new Audio();
     el.src = typeof fileOrSrc === 'string' ? fileOrSrc : URL.createObjectURL(fileOrSrc);
     el.loop = opts.loop !== undefined ? opts.loop : true;
     el.crossOrigin = 'anonymous';
     el.onended = () => { if (this.onEnded) this.onEnded(); };
-    this.mediaEl = el;
 
     const src = this.ctx.createMediaElementSource(el);
-    src.connect(this.analyser);
-    src.connect(this.outGain); // file audio is audible
-    src.connect(this.recordDest); // and captured by the recorder
+    const g = this.ctx.createGain();
+    src.connect(g);
+    g.connect(this.analyser);
+    g.connect(this.outGain);       // audible
+    g.connect(this.recordDest);    // captured by the recorder
+
+    if (fadeMs > 0 && this.mediaEl && this.mode === 'file' && this.sourceGain) {
+      const now = this.ctx.currentTime, dur = fadeMs / 1000;
+      g.gain.setValueAtTime(0.0001, now);
+      g.gain.linearRampToValueAtTime(1, now + dur);
+      const oldEl = this.mediaEl, oldSrc = this.sourceNode, oldGain = this.sourceGain;
+      oldGain.gain.cancelScheduledValues(now);
+      oldGain.gain.setValueAtTime(oldGain.gain.value, now);
+      oldGain.gain.linearRampToValueAtTime(0.0001, now + dur);
+      setTimeout(() => {
+        try { oldEl.pause(); oldEl.src = ''; } catch (e) {}
+        try { oldSrc.disconnect(); } catch (e) {}
+        try { oldGain.disconnect(); } catch (e) {}
+      }, fadeMs + 80);
+    } else {
+      this._disconnectSource();
+      g.gain.value = 1;
+    }
+
+    this.mediaEl = el;
     this.sourceNode = src;
+    this.sourceGain = g;
+    this.stream = null;
     this.mode = 'file';
 
     await el.play();

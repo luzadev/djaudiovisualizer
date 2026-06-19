@@ -195,15 +195,24 @@ let repeat = false;
 let isPlaying = false;       // whether the current track is playing
 let ended = false;           // true when the current track reached its end
 let playbackOwner = 'playlist'; // 'playlist' or 'pad' — who started playback
+const durations = {};        // path -> seconds (probed from the output window)
+let playCur = 0, playDur = 0; // live progress of the currently playing track
+let padCrossfadeMs = 0;      // crossfade duration for pad triggers
 let capturingFor = -1;      // index of the track awaiting a hotkey, or -1
 
 const baseName = (p) => p.split('/').pop();
+
+function probePaths(paths) {
+  const todo = paths.filter(p => p && !(p in durations));
+  if (todo.length) send({ type: 'probeDurations', paths: todo });
+}
 
 function addTracks(items) {
   // items: array of { path, name }
   const start = playlist.length;
   items.forEach(it => { if (it.path) playlist.push({ path: it.path, name: it.name || baseName(it.path), key: null }); });
   renderPlaylist();
+  probePaths(items.map(it => it.path));
   // Auto-start the first added track if nothing is playing yet.
   if (currentIndex < 0 && playlist.length > start) playIndex(start);
 }
@@ -259,13 +268,19 @@ function renderPlaylist() {
 
     const isCur = i === currentIndex;
     const playIcon = (isCur && isPlaying) ? '⏸' : '▶';
+    let timeLabel = '';
+    if (isCur && playDur > 0) timeLabel = '-' + fmtTime(Math.floor(Math.max(0, playDur - playCur)));
+    else if (durations[tr.path] > 0) timeLabel = fmtTime(Math.floor(durations[tr.path]));
+    const prog = (isCur && playDur > 0) ? Math.min(100, playCur / playDur * 100) : 0;
     li.innerHTML =
       '<span class="grip">⠿</span>' +
       '<span class="tname" title="' + tr.name.replace(/"/g, '&quot;') + '">' + tr.name + '</span>' +
+      '<span class="ttime">' + timeLabel + '</span>' +
       '<button class="key-btn" title="Assegna tasto rapido">' +
         (capturingFor === i ? '…' : (tr.key ? tr.key.toUpperCase() : '⌨')) + '</button>' +
       '<button class="play-btn" title="' + (isCur && isPlaying ? 'Pausa' : 'Avvia') + '">' + playIcon + '</button>' +
-      '<button class="del-btn" title="Rimuovi">✕</button>';
+      '<button class="del-btn" title="Rimuovi">✕</button>' +
+      (isCur ? '<i class="tprog" style="width:' + prog.toFixed(1) + '%"></i>' : '');
 
     // On the current track the button pauses/resumes/replays; on others it starts that track.
     li.querySelector('.play-btn').addEventListener('click', () => {
@@ -348,7 +363,7 @@ $('#img-interval').addEventListener('input', (e) => {
 });
 
 // ---------------------------------------------------------------- ticker
-$('#ticker-text').addEventListener('input', (e) => send({ type: 'tickerText', text: e.target.value }));
+$('#ticker-text').addEventListener('input', (e) => send({ type: 'tickerText', text: e.target.value.replace(/\s*\n\s*/g, ' · ') }));
 $('#ticker-on').addEventListener('change', (e) => send({ type: 'tickerOn', on: e.target.checked }));
 $('#ticker-pos').addEventListener('change', (e) => send({ type: 'tickerPos', pos: e.target.value }));
 $('#ticker-speed').addEventListener('input', (e) => {
@@ -356,6 +371,14 @@ $('#ticker-speed').addEventListener('input', (e) => {
   $('#ticker-speed-val').textContent = m.toFixed(1) + '×';
   send({ type: 'tickerSpeed', mult: m });
 });
+$('#ticker-font').addEventListener('change', (e) => send({ type: 'tickerFont', value: e.target.value }));
+$('#ticker-size').addEventListener('input', (e) => {
+  $('#ticker-size-val').textContent = parseFloat(e.target.value).toFixed(1);
+  send({ type: 'tickerSize', value: parseFloat(e.target.value) });
+});
+$('#ticker-bold').addEventListener('change', (e) => send({ type: 'tickerWeight', on: e.target.checked }));
+$('#ticker-color').addEventListener('input', (e) => send({ type: 'tickerColor', value: e.target.value }));
+$('#ticker-fx').addEventListener('change', (e) => send({ type: 'tickerFx', value: e.target.value }));
 
 // ---------------------------------------------------------------- displays
 async function refreshDisplays() {
@@ -414,17 +437,23 @@ function renderPads() {
     const d = document.createElement('div');
     d.className = 'pad' + (p ? ' filled' : '') + (i === activePad && padPlaying ? ' active' : '');
     d.dataset.i = i;
+    const isActive = i === activePad && padPlaying;
+    const prog = (isActive && playDur > 0) ? Math.min(100, playCur / playDur * 100) : 0;
+    const remain = (isActive && playDur > 0) ? '-' + fmtTime(Math.floor(Math.max(0, playDur - playCur)))
+      : (p && durations[p.path] > 0 ? fmtTime(Math.floor(durations[p.path])) : '');
     d.innerHTML = '<span class="pad-num">' + (i + 1) + '</span>' +
       (p ? '<span class="pad-name">' + p.name.replace(/&/g, '&amp;').replace(/</g, '&lt;') + '</span>' +
+           (remain ? '<span class="pad-time">' + remain + '</span>' : '') +
            '<button class="pad-x" title="Svuota">✕</button>' +
            '<button class="pad-key" title="Assegna tasto rapido">' +
-             (padCapturing === i ? '…' : (p.key ? p.key.toUpperCase() : '⌨')) + '</button>'
+             (padCapturing === i ? '…' : (p.key ? p.key.toUpperCase() : '⌨')) + '</button>' +
+           (isActive ? '<i class="pad-prog" style="width:' + prog.toFixed(1) + '%"></i>' : '')
          : '<span class="pad-plus">＋</span>');
     padGrid.appendChild(d);
   });
 }
 
-function assignPad(i, item) { pads[i] = item; renderPads(); savePadState(); }
+function assignPad(i, item) { pads[i] = item; renderPads(); savePadState(); if (item) probePaths([item.path]); }
 function loadPadFile(i) { padLoadTarget = i; $('#pad-input').click(); }
 
 function playPad(i) {
@@ -437,9 +466,10 @@ function playPad(i) {
   }
   playbackOwner = 'pad';
   activePad = i; padPlaying = true;
+  playCur = 0; playDur = durations[p.path] || 0;
   // The playlist is no longer the active source.
   currentIndex = -1; isPlaying = false; renderPlaylist();
-  send({ type: 'playTrack', path: p.path });
+  send({ type: 'playTrack', path: p.path, crossfade: padCrossfadeMs });
   renderPads();
 }
 
@@ -486,6 +516,12 @@ $('#btn-pad-stop').addEventListener('click', () => {
 $('#btn-pad-clear').addEventListener('click', () => {
   pads = new Array(PAD_COUNT).fill(null); activePad = -1; padPlaying = false; renderPads(); savePadState();
 });
+const padXfade = $('#pad-xfade');
+if (padXfade) padXfade.addEventListener('input', (e) => {
+  const s = parseFloat(e.target.value);
+  $('#pad-xfade-val').textContent = s.toFixed(1) + 's';
+  padCrossfadeMs = s * 1000;
+});
 
 // Load saved pad assignments on startup.
 (async () => {
@@ -494,6 +530,7 @@ $('#btn-pad-clear').addEventListener('click', () => {
     if (Array.isArray(saved)) for (let i = 0; i < PAD_COUNT; i++) pads[i] = saved[i] || null;
   } catch (e) { /* ignore */ }
   renderPads();
+  probePaths(pads.filter(Boolean).map(p => p.path));
 })();
 
 // ---------------------------------------------------------------- tabs
@@ -586,7 +623,7 @@ window.addEventListener('keydown', (e) => {
     return;
   }
 
-  if (e.target.tagName === 'INPUT' && e.target.type === 'text') return;
+  if ((e.target.tagName === 'INPUT' && e.target.type === 'text') || e.target.tagName === 'TEXTAREA') return;
 
   const lk = e.key.toLowerCase();
   // Track hotkeys take priority, then effect hotkeys.
@@ -675,6 +712,14 @@ djv.onReport((m) => {
         const now = Date.now();
         if (now - lastBeatAdvance > 250) { lastBeatAdvance = now; nextInSequence(); }
       }
+      break;
+    case 'durations':
+      m.list.forEach(d => { durations[d.path] = d.duration; });
+      renderPlaylist(); renderPads();
+      break;
+    case 'progress':
+      playCur = m.currentTime; playDur = m.duration;
+      if (playbackOwner === 'pad') renderPads(); else renderPlaylist();
       break;
     case 'recState':
       recOn = m.recording;
