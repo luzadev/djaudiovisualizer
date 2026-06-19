@@ -274,7 +274,7 @@ function renderPlaylist() {
     const prog = (isCur && playDur > 0) ? Math.min(100, playCur / playDur * 100) : 0;
     li.innerHTML =
       '<span class="grip">⠿</span>' +
-      '<span class="tname" title="' + tr.name.replace(/"/g, '&quot;') + '">' + tr.name + '</span>' +
+      '<span class="tname" title="Avvia / riavvia dall\'inizio — ' + tr.name.replace(/"/g, '&quot;') + '">' + tr.name + '</span>' +
       '<span class="ttime">' + timeLabel + '</span>' +
       '<button class="key-btn" title="Assegna tasto rapido">' +
         (capturingFor === i ? '…' : (tr.key ? tr.key.toUpperCase() : '⌨')) + '</button>' +
@@ -282,6 +282,8 @@ function renderPlaylist() {
       '<button class="del-btn" title="Rimuovi">✕</button>' +
       (isCur ? '<i class="tprog" style="width:' + prog.toFixed(1) + '%"></i>' : '');
 
+    // Clicking the name (re)starts the track from the beginning.
+    li.querySelector('.tname').addEventListener('click', () => playIndex(i));
     // On the current track the button pauses/resumes/replays; on others it starts that track.
     li.querySelector('.play-btn').addEventListener('click', () => {
       if (i === currentIndex) togglePlayPause();
