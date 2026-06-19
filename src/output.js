@@ -249,7 +249,7 @@ djv.onControl(async (m) => {
     case 'recStart': startRecording(); break;
     case 'recStop': stopRecording(m); break;
     case 'gain': audio.gain = m.value; break;
-    case 'speed': speed = m.value; break;
+    case 'speed': speed = m.value; audio.scrollRate = m.value; break;
     case 'bandGain': audio[m.band + 'Gain'] = m.value; break;
     case 'outputDevice':
       try { await audio.setOutputDevice(m.deviceId || ''); }

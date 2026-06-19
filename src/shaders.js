@@ -23,6 +23,7 @@ uniform vec3  uColorA, uColorB;
 uniform sampler2D uTex;   // custom SVG / image source (uploaded flipped-Y)
 uniform float uSpectrum[32];   // live 32-band spectrum for VU meters
 uniform float uWave[256];      // live time-domain waveform (-1..1)
+uniform float uWaveHist[256];  // scrolling amplitude history (song waveform)
 uniform float uBgDark;         // 1 = force the empty field (v→0) to black
 
 float uT = 0.0;     // time * effect speed (set in main)
@@ -284,19 +285,21 @@ float famVUStereo(vec2 uv) {
 // ---- Waveform + band-reactive families ----
 float waveAt(int i) { return uWave[i]; }
 
-// Horizontal oscilloscope: smooth line via distance to the interpolated segment.
+// Scrolling song waveform: a mirrored filled envelope that moves with time,
+// like the waveform display in DJ software (newest sample at the right edge).
 float famWave(vec2 uv) {
   float xn = uv.x * 0.5 + 0.5;
-  if (xn < -0.02 || xn > 1.02) return 0.0;
-  float amp = 0.42;
-  float fx = clamp(xn, 0.0, 1.0) * 255.0;
+  if (xn < 0.0 || xn > 1.0) return 0.0;
+  float fx = xn * 255.0;
   int i0 = int(floor(fx));
   int i1 = min(i0 + 1, 255);
-  vec2 p0 = vec2((float(i0) / 255.0 - 0.5) * 2.0, waveAt(i0) * amp);
-  vec2 p1 = vec2((float(i1) / 255.0 - 0.5) * 2.0, waveAt(i1) * amp);
-  vec2 pa = uv - p0, ba = p1 - p0;
-  float d = length(pa - ba * clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0));
-  return smoothstep(0.012, 0.0, d) + 0.35 * smoothstep(0.06, 0.0, d);
+  float amp = mix(uWaveHist[i0], uWaveHist[i1], fract(fx)) * 0.85;
+  float ay = abs(uv.y);
+  float fill = smoothstep(amp, amp - 0.012, ay);          // solid body
+  float edge = smoothstep(0.014, 0.0, abs(ay - amp));     // bright crest
+  // a faint centre line so silence still reads as a waveform
+  float centre = smoothstep(0.006, 0.0, ay) * 0.4;
+  return clamp(fill * 0.55 + edge + centre, 0.0, 1.5);
 }
 
 // Radial oscilloscope: the waveform wrapped around a circle (interpolated).

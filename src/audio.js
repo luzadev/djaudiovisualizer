@@ -53,6 +53,14 @@ class AudioEngine {
     this.NW = 256;
     this.wave = new Float32Array(this.NW);
     this.timeData = new Uint8Array(this.analyser.fftSize);
+
+    // Scrolling amplitude history (song-style waveform envelope).
+    this.NH = 256;
+    this.waveHist = new Float32Array(this.NH);
+    this.histPeak = 0;
+    this.histAccum = 0;
+    this.PUSH_EVERY = 2.4;   // frames between samples at scrollRate 1 (~40ms)
+    this.scrollRate = 1;     // tied to the visual speed slider
   }
 
   resume() { if (this.ctx.state === 'suspended') this.ctx.resume(); }
@@ -221,8 +229,23 @@ class AudioEngine {
     // Time-domain waveform.
     this.analyser.getByteTimeDomainData(this.timeData);
     const wstep = this.timeData.length / this.NW;
+    let peak = 0;
     for (let i = 0; i < this.NW; i++) {
-      this.wave[i] = (this.timeData[Math.floor(i * wstep)] - 128) / 128;
+      const s = (this.timeData[Math.floor(i * wstep)] - 128) / 128;
+      this.wave[i] = s;
+      const a = Math.abs(s);
+      if (a > peak) peak = a;
+    }
+
+    // Scrolling waveform: accumulate the peak, push into history at a rate
+    // controlled by the speed slider (so it reads as a song's waveform).
+    this.histPeak = Math.max(this.histPeak, peak);
+    this.histAccum += Math.max(0.04, this.scrollRate);
+    while (this.histAccum >= this.PUSH_EVERY) {
+      this.histAccum -= this.PUSH_EVERY;
+      this.waveHist.copyWithin(0, 1);
+      this.waveHist[this.NH - 1] = this.histPeak;
+      this.histPeak = peak;
     }
 
     return this;
@@ -234,7 +257,7 @@ class AudioEngine {
   }
 
   get values() {
-    return { bass: this.bass, mid: this.mid, treble: this.treble, level: this.level, beat: this.beat, spectrum: this.spectrum, wave: this.wave };
+    return { bass: this.bass, mid: this.mid, treble: this.treble, level: this.level, beat: this.beat, spectrum: this.spectrum, wave: this.wave, waveHist: this.waveHist };
   }
 }
 

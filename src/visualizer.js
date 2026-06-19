@@ -26,7 +26,7 @@ class Visualizer {
       uFamily: U('uFamily'), uScale: U('uScale'), uRot: U('uRot'), uRotSpeed: U('uRotSpeed'), uSym: U('uSym'),
       uHueBase: U('uHueBase'), uHueCycle: U('uHueCycle'), uSat: U('uSat'), uContrast: U('uContrast'),
       uInvert: U('uInvert'), uWarp: U('uWarp'), uAudioMix: U('uAudioMix'), uSpeed: U('uSpeed'),
-      uColorA: U('uColorA'), uColorB: U('uColorB'), uTex: U('uTex'), uSpectrum: U('uSpectrum'), uBgDark: U('uBgDark'), uWave: U('uWave')
+      uColorA: U('uColorA'), uColorB: U('uColorB'), uTex: U('uTex'), uSpectrum: U('uSpectrum'), uBgDark: U('uBgDark'), uWave: U('uWave'), uWaveHist: U('uWaveHist')
     };
 
     // Custom-source texture (for the SVG/Image effect family). Starts empty.
@@ -126,6 +126,7 @@ class Visualizer {
 
     if (u.uSpectrum && audio.spectrum) gl.uniform1fv(u.uSpectrum, audio.spectrum);
     if (u.uWave && audio.wave) gl.uniform1fv(u.uWave, audio.wave);
+    if (u.uWaveHist && audio.waveHist) gl.uniform1fv(u.uWaveHist, audio.waveHist);
 
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.tex);
