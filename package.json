@@ -19,7 +19,8 @@
     "mac": {
       "category": "public.app-category.music",
       "target": "dmg",
-      "icon": "build/icon.icns"
+      "icon": "build/icon.icns",
+      "identity": null
     },
     "files": [
       "main.js",
