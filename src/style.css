@@ -404,6 +404,19 @@ body.output { cursor: none; background: #000; }
 }
 #overlay-images img.show { opacity: 1; }
 
+/* ---- Video layer (VJ loop) ---- */
+.bg-video {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  object-fit: cover;
+  z-index: 1;            /* above the WebGL canvas, below overlays */
+  pointer-events: none;
+  display: none;
+}
+.bg-video.show { display: block; }
+
 /* ---- Per-track scene image ---- */
 .scene-image {
   position: fixed;

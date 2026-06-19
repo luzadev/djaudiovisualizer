@@ -69,6 +69,14 @@ function pickMime() {
 
 // Composite the WebGL visual + DOM overlays (images, logos, ticker) into a 2D
 // canvas so the recording captures everything that's on screen, not just WebGL.
+function drawMediaFit(ctx, media, W, H, fit) {
+  const mw = media.videoWidth || media.naturalWidth, mh = media.videoHeight || media.naturalHeight;
+  if (!mw || !mh) { ctx.drawImage(media, 0, 0, W, H); return; }
+  const scale = fit === 'contain' ? Math.min(W / mw, H / mh) : Math.max(W / mw, H / mh);
+  const dw = mw * scale, dh = mh * scale;
+  ctx.drawImage(media, (W - dw) / 2, (H - dh) / 2, dw, dh);
+}
+
 function composeFrame() {
   const W = recCanvas.width, H = recCanvas.height;
   const sx = W / window.innerWidth, sy = H / window.innerHeight;
@@ -76,6 +84,15 @@ function composeFrame() {
   recCtx.globalCompositeOperation = 'source-over';
   recCtx.clearRect(0, 0, W, H);
   recCtx.drawImage(canvas, 0, 0, W, H);
+
+  if (bgVideo.classList.contains('show') && bgVideo.readyState >= 2 && bgVideo.videoWidth) {
+    recCtx.globalAlpha = parseFloat(getComputedStyle(bgVideo).opacity) || 1;
+    const bm = bgVideo.style.mixBlendMode;
+    recCtx.globalCompositeOperation = (bm && bm !== 'normal') ? bm : 'source-over';
+    try { drawMediaFit(recCtx, bgVideo, W, H, bgVideo.style.objectFit || 'cover'); } catch (e) {}
+    recCtx.globalAlpha = 1;
+    recCtx.globalCompositeOperation = 'source-over';
+  }
 
   for (const im of images) {
     if (!im.classList.contains('show')) continue;
@@ -192,6 +209,7 @@ function loadCustomTexture(dataUrl) {
   img.src = dataUrl;
 }
 
+const bgVideo = $('#bg-video');
 const sceneImage = $('#scene-image');
 
 // Two independent logos.
@@ -300,6 +318,24 @@ djv.onControl(async (m) => {
     case 'imgBeat': beatPulse = m.on; break;
     case 'imgNext': showImage(imgIndex + 1); break;
     case 'imgPrev': showImage(imgIndex - 1); break;
+
+    case 'videoLoad':
+      bgVideo.src = toFileURL(m.path);
+      bgVideo.loop = true; bgVideo.muted = true;
+      bgVideo.classList.add('show');
+      bgVideo.play().catch(() => {});
+      hideHint();
+      break;
+    case 'videoToggle':
+      if (bgVideo.paused) bgVideo.play().catch(() => {}); else bgVideo.pause();
+      break;
+    case 'videoClear':
+      bgVideo.pause(); bgVideo.removeAttribute('src'); bgVideo.load();
+      bgVideo.classList.remove('show');
+      break;
+    case 'videoOpacity': bgVideo.style.opacity = m.value; break;
+    case 'videoFit': bgVideo.style.objectFit = m.value; break;
+    case 'videoBlend': bgVideo.style.mixBlendMode = m.value; break;
 
     case 'sceneImage':
       if (m.path) { sceneImage.src = toFileURL(m.path); sceneImage.classList.add('show'); hideHint(); }

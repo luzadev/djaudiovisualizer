@@ -130,6 +130,32 @@
 
     <!-- ============ IMMAGINI ============ -->
     <div class="tab-panel" data-tab="immagini">
+      <section class="span2">
+        <label>Video (loop VJ)</label>
+        <div class="row">
+          <button id="btn-video">🎞 Carica video…</button>
+          <button id="btn-video-toggle">⏯</button>
+          <button id="btn-video-clear">Rimuovi</button>
+        </div>
+        <input type="file" id="video-input" accept="video/*" hidden />
+        <label>Opacità <span id="video-op-val">100%</span></label>
+        <input type="range" id="video-op" min="0" max="100" step="1" value="100" />
+        <div class="row">
+          <select id="video-fit">
+            <option value="cover">Riempie schermo</option>
+            <option value="contain">Adatta (bordi)</option>
+          </select>
+          <select id="video-blend">
+            <option value="normal">normale</option>
+            <option value="screen">screen</option>
+            <option value="overlay">overlay</option>
+            <option value="multiply">multiply</option>
+            <option value="lighten">lighten</option>
+          </select>
+        </div>
+        <div class="hint-mini">Il video (muto, in loop) si fonde con i visual generati sotto. Per mostrarlo da solo: opacità 100% + fusione "normale".</div>
+      </section>
+
       <section>
         <label>Immagini overlay</label>
         <div class="row">
