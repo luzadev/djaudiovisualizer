@@ -127,7 +127,7 @@ function composeFrame() {
   }
   recCtx.globalAlpha = 1;
 
-  if (ticker.classList.contains('show')) {
+  if (ticker.classList.contains('show') || sideText.classList.contains('show')) {
     recCtx.textBaseline = 'middle';
     for (const span of tickerLetters()) {
       const txt = span.textContent;
@@ -233,6 +233,9 @@ function setLogo(i, url) {
 const ticker = $('#ticker');
 const tickerTrack = $('#ticker-track');
 const tickCopies = ticker.querySelectorAll('.tick-copy');
+const sideText = $('#side-text');
+const sideCopies = sideText.querySelectorAll('.side-copy');
+let tickerVisible = false, tickerDir = 'h';
 function buildLetters(txt) {
   const full = (txt || '') + '   •   ';
   let html = '';
@@ -243,9 +246,24 @@ function buildLetters(txt) {
   }
   return html;
 }
-function setTickerText(t) { const h = buildLetters(t); tickCopies.forEach(c => c.innerHTML = h); }
-function setTickerSpeed(m) { tickerTrack.style.setProperty('--ticker-dur', (18 / m) + 's'); }
-function tickerLetters() { return tickerTrack.querySelectorAll('.tl'); }
+function setTickerText(t) {
+  const h = buildLetters(t);
+  tickCopies.forEach(c => c.innerHTML = h);
+  sideCopies.forEach(c => c.innerHTML = h);
+}
+function setTickerSpeed(m) { document.documentElement.style.setProperty('--ticker-dur', (18 / m) + 's'); }
+function tickerLetters() {
+  let out = [];
+  if (ticker.classList.contains('show')) out = out.concat([...tickerTrack.querySelectorAll('.tl')]);
+  if (sideText.classList.contains('show')) out = out.concat([...sideText.querySelectorAll('.tl')]);
+  return out;
+}
+function styleBoth(prop, value) { tickerTrack.style[prop] = value; sideText.style[prop] = value; }
+function updateTickerVis() {
+  const sides = tickerDir === 'sides';
+  ticker.classList.toggle('show', tickerVisible && !sides);
+  sideText.classList.toggle('show', tickerVisible && sides);
+}
 ticker.classList.add('pos-bottom');
 ticker.classList.add('dir-h');
 setTickerSpeed(1);
@@ -384,23 +402,29 @@ djv.onControl(async (m) => {
     case 'logoOpacity': logos[m.index].style.opacity = m.value; break;
 
     case 'tickerText': setTickerText(m.text); break;
-    case 'tickerOn': ticker.classList.toggle('show', m.on); break;
+    case 'tickerOn': tickerVisible = m.on; updateTickerVis(); break;
     case 'tickerPos':
       ticker.classList.remove('pos-bottom', 'pos-top', 'pos-middle');
       ticker.classList.add('pos-' + m.pos);
       break;
     case 'tickerSpeed': setTickerSpeed(m.mult); break;
     case 'tickerDir':
-      ticker.classList.remove('dir-h', 'dir-vup', 'dir-vdown');
-      ticker.classList.add('dir-' + m.value);
+      tickerDir = m.value;
+      if (m.value !== 'sides') {
+        ticker.classList.remove('dir-h', 'dir-vup', 'dir-vdown');
+        ticker.classList.add('dir-' + m.value);
+      }
+      updateTickerVis();
       break;
-    case 'tickerFont': tickerTrack.style.fontFamily = m.value; break;
-    case 'tickerSize': tickerTrack.style.fontSize = m.value + 'vh'; break;
-    case 'tickerWeight': tickerTrack.style.fontWeight = m.on ? '800' : '400'; break;
-    case 'tickerColor': tickerTrack.style.color = m.value; break;
+    case 'tickerFont': styleBoth('fontFamily', m.value); break;
+    case 'tickerSize': styleBoth('fontSize', m.value + 'vh'); break;
+    case 'tickerWeight': styleBoth('fontWeight', m.on ? '800' : '400'); break;
+    case 'tickerColor': styleBoth('color', m.value); break;
     case 'tickerFx':
-      tickerTrack.classList.remove('fx-updown', 'fx-wave', 'fx-zoom', 'fx-flash', 'fx-rotate');
-      if (m.value && m.value !== 'none') tickerTrack.classList.add('fx-' + m.value);
+      [tickerTrack, sideText].forEach(el => {
+        el.classList.remove('fx-updown', 'fx-wave', 'fx-zoom', 'fx-flash', 'fx-rotate');
+        if (m.value && m.value !== 'none') el.classList.add('fx-' + m.value);
+      });
       break;
   }
 });

@@ -529,6 +529,36 @@ body.output { cursor: none; background: #000; }
 #ticker.dir-vdown #ticker-track { animation: ticker-scroll-vdown var(--ticker-dur, 18s) linear infinite; }
 @keyframes ticker-scroll-vup { from { transform: translateY(0); } to { transform: translateY(-50%); } }
 @keyframes ticker-scroll-vdown { from { transform: translateY(-50%); } to { transform: translateY(0); } }
+
+/* Side text: vertical stacked characters scrolling on both edges */
+#side-text {
+  position: fixed;
+  inset: 0;
+  z-index: 6;
+  pointer-events: none;
+  display: none;
+  font-size: 6vh;
+  font-weight: 800;
+  color: #fff;
+  text-transform: uppercase;
+}
+#side-text.show { display: block; }
+.side-col { position: absolute; top: 0; bottom: 0; overflow: hidden; display: flex; }
+.side-col.left { left: 1.5vw; }
+.side-col.right { right: 1.5vw; }
+.side-track { display: flex; flex-direction: column; align-items: center; will-change: transform; }
+.side-col.left .side-track { animation: side-scroll-down var(--ticker-dur, 18s) linear infinite; }
+.side-col.right .side-track { animation: side-scroll-up var(--ticker-dur, 18s) linear infinite; }
+.side-copy { display: flex; flex-direction: column; align-items: center; padding: 18vh 0; }
+.side-copy .tl {
+  display: block;
+  line-height: 1.0;
+  letter-spacing: 0;
+  text-shadow: 0 0 calc(8px + var(--ticker-glow, 0px)) rgba(140,180,255,0.9),
+               0 2px 20px rgba(0,0,0,0.8);
+}
+@keyframes side-scroll-up { from { transform: translateY(0); } to { transform: translateY(-50%); } }
+@keyframes side-scroll-down { from { transform: translateY(-50%); } to { transform: translateY(0); } }
 .tl {
   display: inline-block;
   white-space: pre;
