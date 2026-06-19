@@ -1,4 +1,4 @@
-const { app, BrowserWindow, screen, ipcMain, systemPreferences, shell } = require('electron');
+const { app, BrowserWindow, screen, ipcMain, systemPreferences, shell, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { execFile } = require('child_process');
@@ -187,6 +187,27 @@ ipcMain.handle('playlist:load', () => {
 });
 ipcMain.handle('playlist:save', (_e, data) => {
   try { fs.writeFileSync(playlistFile(), JSON.stringify(data)); return true; } catch (e) { return false; }
+});
+
+// Export/import a playlist to a user-chosen file.
+ipcMain.handle('playlist:export', async (_e, data) => {
+  const res = await dialog.showSaveDialog(controlWin, {
+    title: 'Salva playlist',
+    defaultPath: 'set.djvplaylist.json',
+    filters: [{ name: 'Playlist DJ Visualizer', extensions: ['json'] }]
+  });
+  if (res.canceled || !res.filePath) return { ok: false };
+  try { fs.writeFileSync(res.filePath, JSON.stringify(data, null, 2)); return { ok: true, path: res.filePath }; }
+  catch (e) { return { ok: false, error: e.message }; }
+});
+ipcMain.handle('playlist:import', async () => {
+  const res = await dialog.showOpenDialog(controlWin, {
+    title: 'Carica playlist',
+    properties: ['openFile'],
+    filters: [{ name: 'Playlist', extensions: ['json'] }]
+  });
+  if (res.canceled || !res.filePaths.length) return null;
+  try { return JSON.parse(fs.readFileSync(res.filePaths[0], 'utf8')); } catch (e) { return null; }
 });
 
 // Read the bundled svg/ folder and return each SVG as a data: URL.

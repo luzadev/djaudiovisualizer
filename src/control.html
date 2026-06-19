@@ -51,10 +51,33 @@
           <button id="btn-clear-playlist">🗑 Svuota</button>
           <label class="chk"><input type="checkbox" id="repeat-playlist" /> Ripeti</label>
         </div>
+        <div class="row">
+          <button id="btn-pl-save">💾 Salva playlist…</button>
+          <button id="btn-pl-load">📂 Carica playlist…</button>
+        </div>
         <input type="file" id="tracks-input" accept="audio/*,video/*" multiple hidden />
         <input type="file" id="scene-img-input" accept="image/*" hidden />
         <ol id="playlist" class="playlist"></ol>
         <div class="hint-mini">Clic sul <b>nome</b> = avvia/riavvia · ▶/⏸ pausa · ⠿ riordina · ⌨ tasto rapido · 🎬 <b>scena</b> (effetto+testo+immagine applicati quando parte il brano)</div>
+      </section>
+
+      <section>
+        <label>Resa video in playlist</label>
+        <select id="tvid-fit">
+          <option value="contain">Adatta (bordi neri)</option>
+          <option value="cover">Riempie schermo</option>
+        </select>
+        <label>Fusione</label>
+        <select id="tvid-blend">
+          <option value="normal">normale</option>
+          <option value="screen">screen</option>
+          <option value="overlay">overlay</option>
+          <option value="multiply">multiply</option>
+          <option value="lighten">lighten</option>
+        </select>
+        <label>Opacità <span id="tvid-op-val">100%</span></label>
+        <input type="range" id="tvid-op" min="0" max="100" step="1" value="100" />
+        <div class="hint-mini">Si applica al video riprodotto dalla playlist (per fonderlo con gli effetti).</div>
       </section>
 
       <section>

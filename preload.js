@@ -32,5 +32,7 @@ contextBridge.exposeInMainWorld('djv', {
   loadPads: () => ipcRenderer.invoke('pads:load'),
   savePads: (data) => ipcRenderer.invoke('pads:save', data),
   loadPlaylist: () => ipcRenderer.invoke('playlist:load'),
-  savePlaylist: (data) => ipcRenderer.invoke('playlist:save', data)
+  savePlaylist: (data) => ipcRenderer.invoke('playlist:save', data),
+  exportPlaylist: (data) => ipcRenderer.invoke('playlist:export', data),
+  importPlaylist: () => ipcRenderer.invoke('playlist:import')
 });

@@ -95,7 +95,12 @@ function composeFrame() {
   }
 
   if (trackVideo.classList.contains('show') && trackVideo.readyState >= 2 && trackVideo.videoWidth) {
-    try { drawMediaFit(recCtx, trackVideo, W, H, 'contain'); } catch (e) {}
+    recCtx.globalAlpha = parseFloat(getComputedStyle(trackVideo).opacity) || 1;
+    const bm = trackVideo.style.mixBlendMode;
+    recCtx.globalCompositeOperation = (bm && bm !== 'normal') ? bm : 'source-over';
+    try { drawMediaFit(recCtx, trackVideo, W, H, trackVideo.style.objectFit || 'contain'); } catch (e) {}
+    recCtx.globalAlpha = 1;
+    recCtx.globalCompositeOperation = 'source-over';
   }
 
   for (const im of images) {
@@ -356,6 +361,9 @@ djv.onControl(async (m) => {
     case 'videoOpacity': bgVideo.style.opacity = m.value; break;
     case 'videoFit': bgVideo.style.objectFit = m.value; break;
     case 'videoBlend': bgVideo.style.mixBlendMode = m.value; break;
+    case 'trackVideoBlend': trackVideo.style.mixBlendMode = m.value; break;
+    case 'trackVideoOpacity': trackVideo.style.opacity = m.value; break;
+    case 'trackVideoFit': trackVideo.style.objectFit = m.value; break;
 
     case 'sceneImage':
       if (m.path) { sceneImage.src = toFileURL(m.path); sceneImage.classList.add('show'); hideHint(); }

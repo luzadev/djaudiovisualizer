@@ -203,10 +203,14 @@ let sceneEditing = -1;      // playlist index whose scene editor is open
 let sceneImgTarget = -1, sceneCueTarget = -1; // track/cue awaiting an image
 let activeCues = [], firedCue = -1;            // cue schedule for the playing track
 
+function serializePlaylist() {
+  return playlist.map(t => ({ path: t.path, name: t.name, key: t.key || null, cues: t.cues || [], isVideo: !!t.isVideo }));
+}
+function normalizeTrack(t) {
+  return { path: t.path, name: t.name || baseName(t.path), key: t.key || null, cues: Array.isArray(t.cues) ? t.cues : [], isVideo: !!t.isVideo };
+}
 function savePlaylistState() {
-  if (djv.savePlaylist) {
-    djv.savePlaylist(playlist.map(t => ({ path: t.path, name: t.name, key: t.key || null, cues: t.cues || [], isVideo: !!t.isVideo })));
-  }
+  if (djv.savePlaylist) djv.savePlaylist(serializePlaylist());
 }
 
 function hasScene(tr) {
@@ -430,6 +434,30 @@ $('#btn-clear-playlist').addEventListener('click', () => {
   playlist = []; currentIndex = -1; sceneEditing = -1; renderPlaylist(); savePlaylistState();
 });
 $('#repeat-playlist').addEventListener('change', (e) => { repeat = e.target.checked; });
+
+// Export / import the playlist to a file.
+$('#btn-pl-save').addEventListener('click', async () => {
+  if (djv.exportPlaylist) await djv.exportPlaylist(serializePlaylist());
+});
+$('#btn-pl-load').addEventListener('click', async () => {
+  if (!djv.importPlaylist) return;
+  const data = await djv.importPlaylist();
+  if (Array.isArray(data)) {
+    playlist = data.map(normalizeTrack);
+    currentIndex = -1; sceneEditing = -1;
+    renderPlaylist(); savePlaylistState();
+    probePaths(playlist.map(t => t.path));
+  }
+});
+
+// Playlist-video rendering (blend / opacity / fit).
+$('#tvid-fit').addEventListener('change', (e) => send({ type: 'trackVideoFit', value: e.target.value }));
+$('#tvid-blend').addEventListener('change', (e) => send({ type: 'trackVideoBlend', value: e.target.value }));
+$('#tvid-op').addEventListener('input', (e) => {
+  const v = parseInt(e.target.value, 10);
+  $('#tvid-op-val').textContent = v + '%';
+  send({ type: 'trackVideoOpacity', value: v / 100 });
+});
 $('#btn-use-input').addEventListener('click', () =>
   send({ type: 'useInput', deviceId: $('#device-select').value || null }));
 $('#output-select').addEventListener('change', (e) =>
@@ -670,10 +698,7 @@ if (padXfade) padXfade.addEventListener('input', (e) => {
   try {
     const saved = djv.loadPlaylist ? await djv.loadPlaylist() : null;
     if (Array.isArray(saved) && saved.length) {
-      playlist = saved.map(t => ({
-        path: t.path, name: t.name || baseName(t.path),
-        key: t.key || null, cues: Array.isArray(t.cues) ? t.cues : [], isVideo: !!t.isVideo
-      }));
+      playlist = saved.map(normalizeTrack);
       renderPlaylist();
       probePaths(playlist.map(t => t.path));
     }
