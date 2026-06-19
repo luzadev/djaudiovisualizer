@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; img-src 'self' blob: data:; style-src 'self' 'unsafe-inline'; script-src 'self'" />
+  <title>DJ Visualizer — Controlli</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body class="control">
+  <header id="topbar">
+    <strong>🎛 DJ Visualizer</strong>
+    <span id="status"><span id="fps">–</span> · <span id="scene-name">Frattale</span></span>
+  </header>
+
+  <main id="panel-grid">
+
+    <section>
+      <label>Sorgente audio</label>
+      <div class="row">
+        <button id="btn-file">📂 File…</button>
+        <button id="btn-play" disabled>⏸ Pausa</button>
+      </div>
+      <input type="file" id="file-input" accept="audio/*" hidden />
+      <div class="row">
+        <select id="device-select"><option value="">— Input live (mic/line/BlackHole) —</option></select>
+      </div>
+      <button id="btn-use-input" class="wide">🎤 Usa input selezionato</button>
+    </section>
+
+    <section>
+      <label>Schermo di output</label>
+      <select id="display-select"></select>
+      <div class="row">
+        <button id="btn-display">📺 Manda al monitor</button>
+        <button id="btn-fullscreen">⛶ Fullscreen</button>
+      </div>
+    </section>
+
+    <section class="span2">
+      <label>Scena</label>
+      <div id="scene-buttons" class="scene-grid"></div>
+    </section>
+
+    <section>
+      <label>Reattività <span id="gain-val">1.0×</span></label>
+      <input type="range" id="gain" min="0" max="3" step="0.05" value="1" />
+      <label>Velocità <span id="speed-val">1.0×</span></label>
+      <input type="range" id="speed" min="0" max="3" step="0.05" value="1" />
+    </section>
+
+    <section class="meters">
+      <label>Livelli</label>
+      <div class="meter"><span>BASS</span><div class="bar"><i id="m-bass"></i></div></div>
+      <div class="meter"><span>MID</span><div class="bar"><i id="m-mid"></i></div></div>
+      <div class="meter"><span>HIGH</span><div class="bar"><i id="m-treble"></i></div></div>
+    </section>
+
+    <section>
+      <label>Immagini overlay</label>
+      <div class="row">
+        <button id="btn-images">🖼 Carica…</button>
+        <button id="btn-images-clear">Pulisci</button>
+      </div>
+      <input type="file" id="image-input" accept="image/*" multiple hidden />
+      <div class="row">
+        <label class="chk"><input type="checkbox" id="img-slideshow" /> Slideshow</label>
+        <label class="chk"><input type="checkbox" id="img-beat" checked /> Pulsa beat</label>
+      </div>
+      <label>Dimensione <span id="img-size-val">70%</span></label>
+      <input type="range" id="img-size" min="10" max="100" step="1" value="70" />
+      <label>Durata slideshow <span id="img-interval-val">5.0s</span></label>
+      <input type="range" id="img-interval" min="1" max="20" step="0.5" value="5" />
+      <label>Fusione</label>
+      <select id="img-blend">
+        <option value="screen">screen (luminoso)</option>
+        <option value="normal">normale</option>
+        <option value="overlay">overlay</option>
+        <option value="multiply">multiply</option>
+        <option value="lighten">lighten</option>
+      </select>
+    </section>
+
+    <section>
+      <label>Testo scorrevole</label>
+      <input type="text" id="ticker-text" class="textfield" placeholder="Es. NOME DJ · EVENTO" />
+      <div class="row">
+        <label class="chk"><input type="checkbox" id="ticker-on" /> Mostra</label>
+        <select id="ticker-pos">
+          <option value="bottom">Basso</option>
+          <option value="top">Alto</option>
+          <option value="middle">Centro</option>
+        </select>
+      </div>
+      <label>Velocità testo <span id="ticker-speed-val">1.0×</span></label>
+      <input type="range" id="ticker-speed" min="0.2" max="4" step="0.1" value="1" />
+    </section>
+
+  </main>
+
+  <footer id="hints">
+    <kbd>1</kbd>–<kbd>8</kbd> scene · <kbd>F</kbd> fullscreen output · <kbd>O</kbd> file ·
+    <kbd>← →</kbd> immagini · <kbd>Spazio</kbd> play/pausa
+  </footer>
+
+  <script src="shaders.js"></script>
+  <script src="control.js"></script>
+</body>
+</html>

@@ -1,0 +1,29 @@
+{
+  "name": "dj-visualizer",
+  "version": "1.0.0",
+  "description": "Audio-reactive fractal & abstract visualizer for external display (Mac)",
+  "main": "main.js",
+  "author": "",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --mac"
+  },
+  "build": {
+    "appId": "com.djvisualizer.app",
+    "productName": "DJ Visualizer",
+    "mac": {
+      "category": "public.app-category.music",
+      "target": "dmg"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "src/**/*"
+    ]
+  },
+  "devDependencies": {
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.3"
+  }
+}

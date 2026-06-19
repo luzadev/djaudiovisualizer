@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; img-src 'self' blob: data: file:; media-src 'self' blob: file:; style-src 'self' 'unsafe-inline'; script-src 'self'" />
+  <title>DJ Visualizer — Output</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body class="output">
+  <canvas id="gl"></canvas>
+
+  <!-- Image overlay layer -->
+  <div id="overlay-images"></div>
+
+  <!-- Scrolling text ticker -->
+  <div id="ticker"><div id="ticker-track"><span></span><span></span></div></div>
+
+  <div id="drop-hint">
+    <div class="big">🎛 In attesa dell'audio…</div>
+    <div class="small">Usa il pannello di controllo sull'altro schermo</div>
+  </div>
+
+  <script src="shaders.js"></script>
+  <script src="visualizer.js"></script>
+  <script src="audio.js"></script>
+  <script src="output.js"></script>
+</body>
+</html>
