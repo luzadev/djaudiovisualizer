@@ -378,12 +378,13 @@ vec3 colorize(float v, vec2 uv0) {
   vec3 hsv = rgb2hsv(mix(uColorA, uColorB, v));
   hsv.x = fract(hsv.x + uHueBase + uHueCycle * uT + uTreble * 0.06 * aMix);
   hsv.y = clamp(hsv.y * uSat, 0.0, 1.0);
-  hsv.z = pow(clamp(hsv.z, 0.0, 1.0), uContrast) * (0.7 + 0.6 * uLevel * aMix);
+  // Brightness clearly pulses with the loudness and punches on the beat.
+  hsv.z = pow(clamp(hsv.z, 0.0, 1.0), uContrast) * (0.5 + 1.3 * uLevel * aMix + 0.6 * uBeat * aMix);
   vec3 col = hsv2rgb(hsv);
   if (uInvert > 0.5) col = vec3(1.0) - col;
   // For silhouette/meter effects, fade the empty field to black.
   col *= mix(1.0, smoothstep(0.0, 0.04, v), uBgDark);
-  col += uBeat * 0.18 * aMix;
+  col += (uBeat * 0.35 + uLevel * 0.12) * aMix;
   col *= 1.0 - 0.28 * dot(uv0, uv0);
   return col;
 }
@@ -393,7 +394,7 @@ void main() {
   aMix = uAudioMix;
   vec2 uv0 = (gl_FragCoord.xy - 0.5 * uRes) / uRes.y;
   vec2 uv = rot(uRot + uRotSpeed * uT) * uv0;
-  uv /= (uScale * (1.0 + uBass * 0.4 * aMix));
+  uv /= (uScale * (1.0 + uBass * 0.8 * aMix));
 
   if (uSym > 0.5) {
     float a = atan(uv.y, uv.x), r = length(uv);
