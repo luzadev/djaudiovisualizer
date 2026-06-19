@@ -367,8 +367,15 @@ djv.onControl(async (m) => {
     case 'trackVideoFit': trackVideo.style.objectFit = m.value; break;
 
     case 'sceneImage':
-      if (m.path) { sceneImage.src = toFileURL(m.path); sceneImage.classList.add('show'); hideHint(); }
-      else { sceneImage.classList.remove('show'); sceneImage.removeAttribute('src'); }
+      if (m.path) {
+        sceneImage.src = toFileURL(m.path);
+        const s = m.size || 60;
+        sceneImage.style.maxWidth = s + 'vw';
+        sceneImage.style.maxHeight = s + 'vh';
+        sceneImage.style.left = (m.x != null ? m.x : 50) + '%';
+        sceneImage.style.top = (m.y != null ? m.y : 50) + '%';
+        sceneImage.classList.add('show'); hideHint();
+      } else { sceneImage.classList.remove('show'); sceneImage.removeAttribute('src'); }
       break;
     case 'logo': setLogo(m.index, m.path ? toFileURL(m.path) : ''); break;
     case 'logoX': logos[m.index].style.left = m.value + '%'; break;

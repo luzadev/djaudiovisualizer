@@ -222,17 +222,58 @@ function parseTime(str) {
   return parseFloat(str) || 0;
 }
 
+// Snapshot the current Text-tab styling for a cue.
+function captureTextStyle() {
+  return {
+    dir: $('#ticker-dir').value,
+    fx: $('#ticker-fx').value,
+    font: $('#ticker-font').value,
+    size: parseFloat($('#ticker-size').value),
+    weight: $('#ticker-bold').checked,
+    color: $('#ticker-color').value
+  };
+}
+const FX_NAMES = { none: 'Nessuno', updown: 'Su-giù', wave: 'Onda', zoom: 'Zoom', flash: 'Flash', rotate: 'Rotazione' };
+function textStyleSummary(ts) {
+  if (!ts) return 'stile attuale del pannello';
+  const dir = ts.dir === 'h' ? 'Orizz.' : (ts.dir === 'vup' ? 'Vert.↑' : 'Vert.↓');
+  return dir + ' · ' + (FX_NAMES[ts.fx] || ts.fx) + ' · ' + ts.size + 'vh';
+}
+const IMG_POS = { center: { x: 50, y: 50 }, top: { x: 50, y: 18 }, bottom: { x: 50, y: 82 }, left: { x: 20, y: 50 }, right: { x: 80, y: 50 } };
+
 // Apply one cue (effect optional; text and image always set so a timeline reads
 // predictably — empty text / null image hide them).
 function applyCue(c) {
   if (!c) return;
   if (c.effectIndex != null && EFFECTS.list[c.effectIndex]) applyEffect(EFFECTS.list[c.effectIndex]);
+
+  // Text + its full styling
   const showText = !!(c.text && c.text.trim());
   send({ type: 'tickerText', text: c.text || '' });
   send({ type: 'tickerOn', on: showText });
   $('#ticker-text').value = c.text || '';
   $('#ticker-on').checked = showText;
-  send({ type: 'sceneImage', path: c.image || null });
+  const ts = c.textStyle;
+  if (ts) {
+    send({ type: 'tickerDir', value: ts.dir });
+    send({ type: 'tickerFx', value: ts.fx });
+    send({ type: 'tickerFont', value: ts.font });
+    send({ type: 'tickerSize', value: ts.size });
+    send({ type: 'tickerWeight', on: ts.weight });
+    send({ type: 'tickerColor', value: ts.color });
+    $('#ticker-dir').value = ts.dir; $('#ticker-fx').value = ts.fx;
+    $('#ticker-font').value = ts.font; $('#ticker-size').value = ts.size;
+    $('#ticker-size-val').textContent = (+ts.size).toFixed(1);
+    $('#ticker-bold').checked = ts.weight; $('#ticker-color').value = ts.color;
+  }
+
+  // Image + size/position
+  if (c.image) {
+    const p = IMG_POS[c.imagePos || 'center'] || IMG_POS.center;
+    send({ type: 'sceneImage', path: c.image, size: c.imageSize || 60, x: p.x, y: p.y });
+  } else {
+    send({ type: 'sceneImage', path: null });
+  }
 }
 function startCues(tr) {
   activeCues = (tr.cues || []).slice().sort((a, b) => a.time - b.time);
@@ -308,6 +349,84 @@ function moveTrack(from, to) {
 
 let dragFrom = -1;
 
+function defaultCue(time) {
+  return { time, effectIndex: null, effectName: '', text: '', textStyle: null, image: null, imageSize: 60, imagePos: 'center' };
+}
+
+// Build the per-track scene editor (timeline of cues with text + image styling).
+function buildSceneEditor(tr, i, li) {
+  const cues = tr.cues || (tr.cues = []);
+  if (cues.length === 0) cues.push(defaultCue(0));
+  cues.sort((a, b) => a.time - b.time);
+  const ed = document.createElement('li');
+  ed.className = 'scene-editor';
+
+  const posLabels = { center: 'Centro', top: 'Alto', bottom: 'Basso', left: 'Sinistra', right: 'Destra' };
+  let html = '<div class="se-title">🎬 Scene a tempo <small>— la cue @00:00 parte col brano, le altre scattano al loro tempo</small></div>';
+  cues.forEach((c, ci) => {
+    html +=
+      '<div class="cue" data-c="' + ci + '">' +
+        '<div class="cue-head">' +
+          '<span class="cue-at">@</span>' +
+          '<input class="cue-time" type="text" value="' + fmtTime(Math.floor(c.time)) + '" title="Tempo (mm:ss)" />' +
+          '<button class="cue-eff" title="Usa l\'effetto attualmente visibile">🌀 ' + (c.effectName || 'imposta effetto') + '</button>' +
+          (ci > 0 ? '<button class="cue-del" title="Rimuovi cue">✕</button>' : '<span class="cue-base">base</span>') +
+        '</div>' +
+        '<div class="cue-block">' +
+          '<div class="cue-bh">🔤 Testo</div>' +
+          '<input class="cue-text textfield" placeholder="Testo (vuoto = nessuno)" />' +
+          '<div class="cue-row">' +
+            '<button class="cue-tstyle">🎨 Cattura stile</button>' +
+            '<span class="cue-tinfo">' + textStyleSummary(c.textStyle) + '</span>' +
+            (c.textStyle ? '<button class="cue-tstyle-clear" title="Stile predefinito">✕</button>' : '') +
+          '</div>' +
+        '</div>' +
+        '<div class="cue-block">' +
+          '<div class="cue-bh">🖼 Immagine</div>' +
+          '<div class="cue-row">' +
+            '<button class="cue-img">Carica…</button>' +
+            '<button class="cue-img-clear">✕</button>' +
+            '<span class="cue-name">' + (c.image ? baseName(c.image) : 'nessuna') + '</span>' +
+          '</div>' +
+          (c.image ?
+            '<div class="cue-row"><select class="cue-img-pos">' +
+              Object.keys(posLabels).map(p => '<option value="' + p + '"' + ((c.imagePos || 'center') === p ? ' selected' : '') + '>' + posLabels[p] + '</option>').join('') +
+            '</select><span class="cue-dim">Dim</span><input class="cue-img-size" type="range" min="10" max="100" step="1" value="' + (c.imageSize || 60) + '" /></div>'
+            : '') +
+        '</div>' +
+      '</div>';
+  });
+  html += '<div class="se-foot"><button class="cue-add">➕ Aggiungi cue</button><button class="se-clear">🗑 Rimuovi scena</button></div>';
+  ed.innerHTML = html;
+
+  ed.querySelectorAll('.cue').forEach(cueEl => {
+    const ci = parseInt(cueEl.dataset.c, 10);
+    const c = cues[ci];
+    cueEl.querySelector('.cue-text').value = c.text || '';
+    cueEl.querySelector('.cue-time').addEventListener('change', (e) => { c.time = parseTime(e.target.value); savePlaylistState(); renderPlaylist(); });
+    cueEl.querySelector('.cue-eff').addEventListener('click', () => { c.effectIndex = EFFECTS.list.indexOf(currentEffect); c.effectName = currentEffect.name; savePlaylistState(); renderPlaylist(); });
+    cueEl.querySelector('.cue-text').addEventListener('input', (e) => { c.text = e.target.value; li.querySelector('.scene-btn').classList.toggle('active', hasScene(tr)); savePlaylistState(); });
+    cueEl.querySelector('.cue-tstyle').addEventListener('click', () => { c.textStyle = captureTextStyle(); savePlaylistState(); renderPlaylist(); });
+    const tsc = cueEl.querySelector('.cue-tstyle-clear');
+    if (tsc) tsc.addEventListener('click', () => { c.textStyle = null; savePlaylistState(); renderPlaylist(); });
+    cueEl.querySelector('.cue-img').addEventListener('click', () => { sceneImgTarget = i; sceneCueTarget = ci; $('#scene-img-input').click(); });
+    cueEl.querySelector('.cue-img-clear').addEventListener('click', () => { c.image = null; savePlaylistState(); renderPlaylist(); });
+    const posSel = cueEl.querySelector('.cue-img-pos');
+    if (posSel) posSel.addEventListener('change', (e) => { c.imagePos = e.target.value; savePlaylistState(); });
+    const sizeSl = cueEl.querySelector('.cue-img-size');
+    if (sizeSl) sizeSl.addEventListener('input', (e) => { c.imageSize = parseInt(e.target.value, 10); savePlaylistState(); });
+    const del = cueEl.querySelector('.cue-del');
+    if (del) del.addEventListener('click', () => { cues.splice(ci, 1); savePlaylistState(); renderPlaylist(); });
+  });
+  ed.querySelector('.cue-add').addEventListener('click', () => {
+    const lastT = cues.length ? cues[cues.length - 1].time : 0;
+    cues.push(defaultCue(lastT + 30));
+    savePlaylistState(); renderPlaylist();
+  });
+  ed.querySelector('.se-clear').addEventListener('click', () => { tr.cues = []; sceneEditing = -1; savePlaylistState(); renderPlaylist(); });
+  return ed;
+}
+
 function renderPlaylist() {
   const ol = $('#playlist');
   ol.innerHTML = '';
@@ -362,51 +481,7 @@ function renderPlaylist() {
 
     ol.appendChild(li);
 
-    if (sceneEditing === i) {
-      const cues = tr.cues || (tr.cues = []);
-      if (cues.length === 0) cues.push({ time: 0, effectIndex: null, effectName: '', text: '', image: null });
-      cues.sort((a, b) => a.time - b.time);
-      const ed = document.createElement('li');
-      ed.className = 'scene-editor';
-      let html = '<div class="se-title">🎬 Scene a tempo del brano</div>';
-      cues.forEach((c, ci) => {
-        html += '<div class="cue" data-c="' + ci + '">' +
-          '<div class="se-row"><span class="cue-at">@</span>' +
-            '<input class="cue-time" type="text" value="' + fmtTime(Math.floor(c.time)) + '" title="Tempo (mm:ss)" />' +
-            '<button class="cue-eff">🌀 effetto</button>' +
-            '<span class="se-name">' + (c.effectName || '—') + '</span>' +
-            (ci > 0 ? '<button class="cue-del" title="Rimuovi cue">✕</button>' : '') +
-          '</div>' +
-          '<input class="cue-text textfield" placeholder="Testo (vuoto = nascondi)" />' +
-          '<div class="se-row"><button class="cue-img">🖼 Immagine</button>' +
-            '<button class="cue-img-clear">✕</button>' +
-            '<span class="se-name">' + (c.image ? baseName(c.image) : 'nessuna') + '</span></div>' +
-          '</div>';
-      });
-      html += '<div class="se-row"><button class="cue-add">➕ Aggiungi cue</button>' +
-        '<button class="se-clear">Rimuovi scena</button></div>' +
-        '<div class="hint-mini" style="margin:4px 0 0">La cue @00:00 parte col brano; le altre scattano al loro tempo.</div>';
-      ed.innerHTML = html;
-      ed.querySelectorAll('.cue').forEach(cueEl => {
-        const ci = parseInt(cueEl.dataset.c, 10);
-        const c = cues[ci];
-        cueEl.querySelector('.cue-text').value = c.text || '';
-        cueEl.querySelector('.cue-time').addEventListener('change', (e) => { c.time = parseTime(e.target.value); savePlaylistState(); renderPlaylist(); });
-        cueEl.querySelector('.cue-eff').addEventListener('click', () => { c.effectIndex = EFFECTS.list.indexOf(currentEffect); c.effectName = currentEffect.name; savePlaylistState(); renderPlaylist(); });
-        cueEl.querySelector('.cue-text').addEventListener('input', (e) => { c.text = e.target.value; li.querySelector('.scene-btn').classList.toggle('active', hasScene(tr)); savePlaylistState(); });
-        cueEl.querySelector('.cue-img').addEventListener('click', () => { sceneImgTarget = i; sceneCueTarget = ci; $('#scene-img-input').click(); });
-        cueEl.querySelector('.cue-img-clear').addEventListener('click', () => { c.image = null; savePlaylistState(); renderPlaylist(); });
-        const del = cueEl.querySelector('.cue-del');
-        if (del) del.addEventListener('click', () => { cues.splice(ci, 1); savePlaylistState(); renderPlaylist(); });
-      });
-      ed.querySelector('.cue-add').addEventListener('click', () => {
-        const lastT = cues.length ? cues[cues.length - 1].time : 0;
-        cues.push({ time: lastT + 30, effectIndex: null, effectName: '', text: '', image: null });
-        savePlaylistState(); renderPlaylist();
-      });
-      ed.querySelector('.se-clear').addEventListener('click', () => { tr.cues = []; sceneEditing = -1; savePlaylistState(); renderPlaylist(); });
-      ol.appendChild(ed);
-    }
+    if (sceneEditing === i) ol.appendChild(buildSceneEditor(tr, i, li));
   });
   $('#playlist-count').textContent = playlist.length + (playlist.length === 1 ? ' brano' : ' brani');
 }
@@ -424,7 +499,7 @@ $('#scene-img-input').addEventListener('change', (e) => {
     const tr = playlist[sceneImgTarget];
     tr.cues = tr.cues || [];
     if (!tr.cues[sceneCueTarget]) sceneCueTarget = 0;
-    if (!tr.cues[sceneCueTarget]) tr.cues.push({ time: 0, effectIndex: null, effectName: '', text: '', image: null });
+    if (!tr.cues[sceneCueTarget]) tr.cues.push(defaultCue(0));
     tr.cues[sceneCueTarget].image = p;
     savePlaylistState(); renderPlaylist();
   }
