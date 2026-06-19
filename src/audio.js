@@ -50,7 +50,7 @@ class AudioEngine {
     this.spectrum = new Float32Array(this.NB);
 
     // Time-domain waveform (oscilloscope), -1..1.
-    this.NW = 128;
+    this.NW = 256;
     this.wave = new Float32Array(this.NW);
     this.timeData = new Uint8Array(this.analyser.fftSize);
   }

@@ -22,7 +22,7 @@ uniform float uHueBase, uHueCycle, uSat, uContrast, uInvert, uWarp, uAudioMix, u
 uniform vec3  uColorA, uColorB;
 uniform sampler2D uTex;   // custom SVG / image source (uploaded flipped-Y)
 uniform float uSpectrum[32];   // live 32-band spectrum for VU meters
-uniform float uWave[128];      // live time-domain waveform (-1..1)
+uniform float uWave[256];      // live time-domain waveform (-1..1)
 uniform float uBgDark;         // 1 = force the empty field (v→0) to black
 
 float uT = 0.0;     // time * effect speed (set in main)
@@ -284,25 +284,32 @@ float famVUStereo(vec2 uv) {
 // ---- Waveform + band-reactive families ----
 float waveAt(int i) { return uWave[i]; }
 
-// Horizontal oscilloscope line.
+// Horizontal oscilloscope: smooth line via distance to the interpolated segment.
 float famWave(vec2 uv) {
   float xn = uv.x * 0.5 + 0.5;
-  if (xn < 0.0 || xn > 1.0) return 0.0;
-  int idx = int(clamp(xn * 128.0, 0.0, 127.0));
-  float y = waveAt(idx) * 0.42;
-  float d = abs(uv.y - y);
-  return smoothstep(0.018, 0.0, d) + 0.3 * smoothstep(0.09, 0.0, d);
+  if (xn < -0.02 || xn > 1.02) return 0.0;
+  float amp = 0.42;
+  float fx = clamp(xn, 0.0, 1.0) * 255.0;
+  int i0 = int(floor(fx));
+  int i1 = min(i0 + 1, 255);
+  vec2 p0 = vec2((float(i0) / 255.0 - 0.5) * 2.0, waveAt(i0) * amp);
+  vec2 p1 = vec2((float(i1) / 255.0 - 0.5) * 2.0, waveAt(i1) * amp);
+  vec2 pa = uv - p0, ba = p1 - p0;
+  float d = length(pa - ba * clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0));
+  return smoothstep(0.012, 0.0, d) + 0.35 * smoothstep(0.06, 0.0, d);
 }
 
-// Radial oscilloscope: the waveform wrapped around a circle.
+// Radial oscilloscope: the waveform wrapped around a circle (interpolated).
 float famWaveCircle(vec2 uv) {
   float a = atan(uv.y, uv.x);
   float r = length(uv);
-  float t = a / 6.2831853 + 0.5;
-  int idx = int(clamp(t * 128.0, 0.0, 127.0));
-  float radius = 0.42 + waveAt(idx) * 0.2 * (0.6 + uLevel * aMix);
+  float ft = (a / 6.2831853 + 0.5) * 255.0;
+  int i0 = int(floor(clamp(ft, 0.0, 255.0)));
+  int i1 = min(i0 + 1, 255);
+  float w = mix(waveAt(i0), waveAt(i1), fract(ft));
+  float radius = 0.42 + w * 0.2 * (0.6 + uLevel * aMix);
   float d = abs(r - radius);
-  return smoothstep(0.018, 0.0, d) + 0.28 * smoothstep(0.08, 0.0, d);
+  return smoothstep(0.012, 0.0, d) + 0.28 * smoothstep(0.07, 0.0, d);
 }
 
 // Concentric zones, each reacting to a different band (inner=bass … outer=treble).
