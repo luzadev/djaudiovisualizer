@@ -347,6 +347,23 @@ textarea.textarea-lg {
 }
 .track .play-btn { color: #8ef0b0; }
 .track .del-btn { color: #ff8a8a; }
+.track .scene-btn { filter: grayscale(1) opacity(0.5); }
+.track .scene-btn.active { filter: none; }
+
+/* Per-track scene editor */
+.scene-editor {
+  list-style: none;
+  margin: -2px 0 7px;
+  padding: 10px;
+  background: rgba(110,150,255,0.10);
+  border: 1px solid rgba(120,150,255,0.3);
+  border-radius: 9px;
+}
+.scene-editor .se-row { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+.scene-editor .se-row:last-child { margin-bottom: 0; }
+.scene-editor .se-name { font-size: 10.5px; opacity: 0.7; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.scene-editor .se-text { margin: 0 0 6px; }
+.scene-editor .se-img-clear, .scene-editor .se-clear { flex: 0 0 auto; }
 
 /* ============ OUTPUT WINDOW ============ */
 body.output { cursor: none; background: #000; }
@@ -374,6 +391,21 @@ body.output { cursor: none; background: #000; }
   filter: drop-shadow(0 0 30px rgba(0,0,0,0.6));
 }
 #overlay-images img.show { opacity: 1; }
+
+/* ---- Per-track scene image ---- */
+.scene-image {
+  position: fixed;
+  left: 50%; top: 50%;
+  transform: translate(-50%, -50%);
+  max-width: 62vw;
+  max-height: 62vh;
+  object-fit: contain;
+  z-index: 4;
+  pointer-events: none;
+  display: none;
+  filter: drop-shadow(0 0 24px rgba(0,0,0,0.5));
+}
+.scene-image.show { display: block; }
 
 /* ---- Independent logos ---- */
 .logo {

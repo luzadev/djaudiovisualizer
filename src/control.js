@@ -199,6 +199,26 @@ const durations = {};        // path -> seconds (probed from the output window)
 let playCur = 0, playDur = 0; // live progress of the currently playing track
 let padCrossfadeMs = 0;      // crossfade duration for pad triggers
 let capturingFor = -1;      // index of the track awaiting a hotkey, or -1
+let sceneEditing = -1;      // playlist index whose scene editor is open
+let sceneImgTarget = -1;    // playlist index awaiting a scene image
+
+function hasScene(tr) {
+  const s = tr.scene;
+  return !!(s && (s.effectIndex != null || (s.text && s.text.trim()) || s.image));
+}
+
+// Apply a track's scene (effect + text + image) when it starts.
+function applyScene(tr) {
+  const s = tr.scene;
+  if (!s) return;
+  if (s.effectIndex != null && EFFECTS.list[s.effectIndex]) applyEffect(EFFECTS.list[s.effectIndex]);
+  const showText = !!(s.text && s.text.trim());
+  send({ type: 'tickerText', text: s.text || '' });
+  send({ type: 'tickerOn', on: showText });
+  $('#ticker-text').value = s.text || '';
+  $('#ticker-on').checked = showText;
+  send({ type: 'sceneImage', path: s.image || null });
+}
 
 const baseName = (p) => p.split('/').pop();
 
@@ -225,6 +245,7 @@ function playIndex(i) {
   playbackOwner = 'playlist';
   activePad = -1; padPlaying = false; renderPads();
   send({ type: 'playTrack', path: playlist[i].path });
+  if (playlist[i].scene) applyScene(playlist[i]);
   $('#btn-play').disabled = false;
   $('#btn-play').textContent = '⏸ Pausa';
   renderPlaylist();
@@ -279,6 +300,7 @@ function renderPlaylist() {
       '<button class="key-btn" title="Assegna tasto rapido">' +
         (capturingFor === i ? '…' : (tr.key ? tr.key.toUpperCase() : '⌨')) + '</button>' +
       '<button class="play-btn" title="' + (isCur && isPlaying ? 'Pausa' : 'Avvia') + '">' + playIcon + '</button>' +
+      '<button class="scene-btn' + (hasScene(tr) ? ' active' : '') + '" title="Scena del brano (effetto/testo/immagine)">🎬</button>' +
       '<button class="del-btn" title="Rimuovi">✕</button>' +
       (isCur ? '<i class="tprog" style="width:' + prog.toFixed(1) + '%"></i>' : '');
 
@@ -294,6 +316,10 @@ function renderPlaylist() {
       capturingFor = capturingFor === i ? -1 : i;
       renderPlaylist();
     });
+    li.querySelector('.scene-btn').addEventListener('click', () => {
+      sceneEditing = sceneEditing === i ? -1 : i;
+      renderPlaylist();
+    });
 
     // Drag to reorder.
     li.addEventListener('dragstart', () => { dragFrom = i; li.classList.add('dragging'); });
@@ -305,6 +331,35 @@ function renderPlaylist() {
     });
 
     ol.appendChild(li);
+
+    if (sceneEditing === i) {
+      const s = tr.scene || (tr.scene = { effectIndex: null, effectName: '', text: '', image: null });
+      const ed = document.createElement('li');
+      ed.className = 'scene-editor';
+      ed.innerHTML =
+        '<div class="se-row"><button class="se-effect">🌀 Usa effetto corrente</button>' +
+          '<span class="se-name">' + (s.effectName || '— nessun effetto —') + '</span></div>' +
+        '<input class="se-text textfield" placeholder="Testo da mostrare (vuoto = nessuno)" />' +
+        '<div class="se-row"><button class="se-img">🖼 Immagine…</button>' +
+          '<button class="se-img-clear">✕</button>' +
+          '<span class="se-name">' + (s.image ? baseName(s.image) : 'nessuna immagine') + '</span></div>' +
+        '<div class="se-row"><button class="se-clear">Rimuovi scena</button>' +
+          '<span class="hint-mini" style="margin:0">Applicata quando parte il brano</span></div>';
+      ed.querySelector('.se-text').value = s.text || '';
+      ed.querySelector('.se-effect').addEventListener('click', () => {
+        s.effectIndex = EFFECTS.list.indexOf(currentEffect);
+        s.effectName = currentEffect.name;
+        renderPlaylist();
+      });
+      ed.querySelector('.se-text').addEventListener('input', (e) => {
+        s.text = e.target.value;
+        li.querySelector('.scene-btn').classList.toggle('active', hasScene(tr));
+      });
+      ed.querySelector('.se-img').addEventListener('click', () => { sceneImgTarget = i; $('#scene-img-input').click(); });
+      ed.querySelector('.se-img-clear').addEventListener('click', () => { s.image = null; renderPlaylist(); });
+      ed.querySelector('.se-clear').addEventListener('click', () => { tr.scene = null; sceneEditing = -1; renderPlaylist(); });
+      ol.appendChild(ed);
+    }
   });
   $('#playlist-count').textContent = playlist.length + (playlist.length === 1 ? ' brano' : ' brani');
 }
@@ -314,6 +369,16 @@ $('#tracks-input').addEventListener('change', (e) => {
   const items = [...e.target.files].map(f => ({ path: filePath(f), name: f.name }));
   if (items.length) addTracks(items);
   e.target.value = ''; // allow re-adding the same file
+});
+$('#scene-img-input').addEventListener('change', (e) => {
+  const f = e.target.files[0];
+  const p = f && filePath(f);
+  if (p && sceneImgTarget >= 0 && playlist[sceneImgTarget]) {
+    const tr = playlist[sceneImgTarget];
+    (tr.scene = tr.scene || { effectIndex: null, effectName: '', text: '', image: null }).image = p;
+    renderPlaylist();
+  }
+  sceneImgTarget = -1; e.target.value = '';
 });
 $('#btn-clear-playlist').addEventListener('click', () => {
   playlist = []; currentIndex = -1; renderPlaylist();

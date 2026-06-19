@@ -88,6 +88,11 @@ function composeFrame() {
   recCtx.globalAlpha = 1;
   recCtx.globalCompositeOperation = 'source-over';
 
+  if (sceneImage.classList.contains('show') && sceneImage.src) {
+    const r = sceneImage.getBoundingClientRect();
+    try { recCtx.drawImage(sceneImage, r.x * sx, r.y * sy, r.width * sx, r.height * sy); } catch (e) {}
+  }
+
   for (const l of logos) {
     if (!l.classList.contains('show')) continue;
     const r = l.getBoundingClientRect();
@@ -186,6 +191,8 @@ function loadCustomTexture(dataUrl) {
   img.onerror = () => djv.report({ type: 'error', message: 'SVG/immagine non caricata' });
   img.src = dataUrl;
 }
+
+const sceneImage = $('#scene-image');
 
 // Two independent logos.
 const logos = [$('#logo-0'), $('#logo-1')];
@@ -294,6 +301,10 @@ djv.onControl(async (m) => {
     case 'imgNext': showImage(imgIndex + 1); break;
     case 'imgPrev': showImage(imgIndex - 1); break;
 
+    case 'sceneImage':
+      if (m.path) { sceneImage.src = toFileURL(m.path); sceneImage.classList.add('show'); hideHint(); }
+      else { sceneImage.classList.remove('show'); sceneImage.removeAttribute('src'); }
+      break;
     case 'logo': setLogo(m.index, m.path ? toFileURL(m.path) : ''); break;
     case 'logoX': logos[m.index].style.left = m.value + '%'; break;
     case 'logoY': logos[m.index].style.top = m.value + '%'; break;
