@@ -34,6 +34,9 @@ class AudioEngine {
     this.stream = null;       // MediaStream when using live input
     this.mode = 'none';
     this.onEnded = null;      // callback fired when a (non-looping) track ends
+    this._videoSrc = null;    // persistent source for the playlist video element
+    this._videoGain = null;
+    this._videoSrcEl = null;
 
     // Smoothed band values and beat state.
     this.gain = 1.0;          // master reactivity multiplier
@@ -143,6 +146,28 @@ class AudioEngine {
     src.connect(this.recordDest); // but capture it when recording
     this.sourceNode = src;
     this.mode = 'input';
+  }
+
+  // Play a playlist video track: route the given <video> element's audio
+  // through the analyser/output so visuals react and it's audible/recordable.
+  attachVideo(videoEl) {
+    this.resume();
+    this._disconnectSource();
+    if (this._videoSrcEl !== videoEl) {
+      // createMediaElementSource may only be called once per element.
+      this._videoSrc = this.ctx.createMediaElementSource(videoEl);
+      this._videoGain = this.ctx.createGain();
+      this._videoSrc.connect(this._videoGain);
+      this._videoGain.connect(this.analyser);
+      this._videoGain.connect(this.outGain);
+      this._videoGain.connect(this.recordDest);
+      this._videoSrcEl = videoEl;
+    }
+    videoEl.onended = () => { if (this.onEnded) this.onEnded(); };
+    this.mediaEl = videoEl;
+    this.sourceNode = null;
+    this.sourceGain = null;
+    this.mode = 'video';
   }
 
   async listInputDevices() {

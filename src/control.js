@@ -205,7 +205,7 @@ let activeCues = [], firedCue = -1;            // cue schedule for the playing t
 
 function savePlaylistState() {
   if (djv.savePlaylist) {
-    djv.savePlaylist(playlist.map(t => ({ path: t.path, name: t.name, key: t.key || null, cues: t.cues || [] })));
+    djv.savePlaylist(playlist.map(t => ({ path: t.path, name: t.name, key: t.key || null, cues: t.cues || [], isVideo: !!t.isVideo })));
   }
 }
 
@@ -252,7 +252,7 @@ function probePaths(paths) {
 function addTracks(items) {
   // items: array of { path, name }
   const start = playlist.length;
-  items.forEach(it => { if (it.path) playlist.push({ path: it.path, name: it.name || baseName(it.path), key: null }); });
+  items.forEach(it => { if (it.path) playlist.push({ path: it.path, name: it.name || baseName(it.path), key: null, cues: [], isVideo: !!it.isVideo }); });
   renderPlaylist();
   savePlaylistState();
   probePaths(items.map(it => it.path));
@@ -267,7 +267,7 @@ function playIndex(i) {
   ended = false;
   playbackOwner = 'playlist';
   activePad = -1; padPlaying = false; renderPads();
-  send({ type: 'playTrack', path: playlist[i].path });
+  send({ type: playlist[i].isVideo ? 'playVideoTrack' : 'playTrack', path: playlist[i].path });
   startCues(playlist[i]);
   $('#btn-play').disabled = false;
   $('#btn-play').textContent = '⏸ Pausa';
@@ -321,7 +321,7 @@ function renderPlaylist() {
     const prog = (isCur && playDur > 0) ? Math.min(100, playCur / playDur * 100) : 0;
     li.innerHTML =
       '<span class="grip">⠿</span>' +
-      '<span class="tname" title="Avvia / riavvia dall\'inizio — ' + tr.name.replace(/"/g, '&quot;') + '">' + tr.name + '</span>' +
+      '<span class="tname" title="Avvia / riavvia dall\'inizio — ' + tr.name.replace(/"/g, '&quot;') + '">' + (tr.isVideo ? '🎞 ' : '') + tr.name + '</span>' +
       '<span class="ttime">' + timeLabel + '</span>' +
       '<button class="key-btn" title="Assegna tasto rapido">' +
         (capturingFor === i ? '…' : (tr.key ? tr.key.toUpperCase() : '⌨')) + '</button>' +
@@ -409,7 +409,7 @@ function renderPlaylist() {
 
 $('#btn-add-tracks').addEventListener('click', () => $('#tracks-input').click());
 $('#tracks-input').addEventListener('change', (e) => {
-  const items = [...e.target.files].map(f => ({ path: filePath(f), name: f.name }));
+  const items = [...e.target.files].map(f => ({ path: filePath(f), name: f.name, isVideo: f.type.startsWith('video/') }));
   if (items.length) addTracks(items);
   e.target.value = ''; // allow re-adding the same file
 });
@@ -672,7 +672,7 @@ if (padXfade) padXfade.addEventListener('input', (e) => {
     if (Array.isArray(saved) && saved.length) {
       playlist = saved.map(t => ({
         path: t.path, name: t.name || baseName(t.path),
-        key: t.key || null, cues: Array.isArray(t.cues) ? t.cues : []
+        key: t.key || null, cues: Array.isArray(t.cues) ? t.cues : [], isVideo: !!t.isVideo
       }));
       renderPlaylist();
       probePaths(playlist.map(t => t.path));
@@ -723,14 +723,12 @@ window.addEventListener('drop', (e) => {
   e.preventDefault();
   document.body.classList.remove('dragover');
   const files = [...e.dataTransfer.files];
-  const audioItems = files.filter(f => f.type.startsWith('audio/'))
-    .map(f => ({ path: filePath(f), name: f.name }));
+  // Audio and video files both go into the playlist as tracks.
+  const mediaItems = files.filter(f => f.type.startsWith('audio/') || f.type.startsWith('video/'))
+    .map(f => ({ path: filePath(f), name: f.name, isVideo: f.type.startsWith('video/') }));
   const imgPaths = files.filter(f => f.type.startsWith('image/')).map(filePath).filter(Boolean);
-  const videoFile = files.find(f => f.type.startsWith('video/'));
-  const videoPath = videoFile && filePath(videoFile);
-  if (audioItems.length) addTracks(audioItems);
+  if (mediaItems.length) addTracks(mediaItems);
   if (imgPaths.length) send({ type: 'addImages', paths: imgPaths });
-  if (videoPath) send({ type: 'videoLoad', path: videoPath });
 });
 
 // ---------------------------------------------------------------- keyboard

@@ -94,6 +94,10 @@ function composeFrame() {
     recCtx.globalCompositeOperation = 'source-over';
   }
 
+  if (trackVideo.classList.contains('show') && trackVideo.readyState >= 2 && trackVideo.videoWidth) {
+    try { drawMediaFit(recCtx, trackVideo, W, H, 'contain'); } catch (e) {}
+  }
+
   for (const im of images) {
     if (!im.classList.contains('show')) continue;
     const r = im.getBoundingClientRect();
@@ -210,6 +214,7 @@ function loadCustomTexture(dataUrl) {
 }
 
 const bgVideo = $('#bg-video');
+const trackVideo = $('#track-video');
 const sceneImage = $('#scene-image');
 
 // Two independent logos.
@@ -249,7 +254,8 @@ function probeDurations(paths) {
   let pending = paths.length;
   const finish = () => { if (--pending === 0) djv.report({ type: 'durations', list: results }); };
   paths.forEach(p => {
-    const a = new Audio();
+    // A <video> element reads duration for both audio and video files.
+    const a = document.createElement('video');
     a.preload = 'metadata';
     a.onloadedmetadata = () => { results.push({ path: p, duration: isFinite(a.duration) ? a.duration : 0 }); finish(); };
     a.onerror = () => { results.push({ path: p, duration: 0 }); finish(); };
@@ -291,8 +297,22 @@ djv.onControl(async (m) => {
       break;
     case 'playTrack':
       try {
+        // Switching to an audio track: stop/hide any playing video track.
+        trackVideo.pause(); trackVideo.classList.remove('show');
         audio.onEnded = () => djv.report({ type: 'trackEnded' });
         await audio.loadFile(toFileURL(m.path), { loop: false, crossfade: m.crossfade || 0 });
+        hideHint();
+        djv.report({ type: 'playState', playing: true });
+      } catch (e) { djv.report({ type: 'error', message: e.message }); }
+      break;
+    case 'playVideoTrack':
+      try {
+        audio.onEnded = () => djv.report({ type: 'trackEnded' });
+        trackVideo.loop = false; trackVideo.muted = false;
+        trackVideo.src = toFileURL(m.path);
+        trackVideo.classList.add('show');
+        audio.attachVideo(trackVideo);
+        await trackVideo.play();
         hideHint();
         djv.report({ type: 'playState', playing: true });
       } catch (e) { djv.report({ type: 'error', message: e.message }); }

@@ -417,6 +417,19 @@ body.output { cursor: none; background: #000; }
 }
 .bg-video.show { display: block; }
 
+.track-video {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  object-fit: contain;
+  background: #000;
+  z-index: 2;            /* main visual when a video track plays */
+  pointer-events: none;
+  display: none;
+}
+.track-video.show { display: block; }
+
 /* ---- Per-track scene image ---- */
 .scene-image {
   position: fixed;
