@@ -364,6 +364,18 @@ textarea.textarea-lg {
 .scene-editor .se-name { font-size: 10.5px; opacity: 0.7; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .scene-editor .se-text { margin: 0 0 6px; }
 .scene-editor .se-img-clear, .scene-editor .se-clear { flex: 0 0 auto; }
+.scene-editor .se-title { font-size: 11px; opacity: 0.75; margin-bottom: 8px; }
+.scene-editor .cue {
+  border-top: 1px dashed rgba(255,255,255,0.12);
+  padding-top: 7px;
+  margin-top: 7px;
+}
+.scene-editor .cue:first-of-type { border-top: none; padding-top: 0; margin-top: 0; }
+.scene-editor .cue-at { opacity: 0.5; flex: 0 0 auto; }
+.scene-editor .cue-time { width: 58px; flex: 0 0 auto; text-align: center; padding: 6px 4px; }
+.scene-editor .cue-text { width: 100%; margin: 0 0 6px; }
+.scene-editor .cue-eff, .scene-editor .cue-img, .scene-editor .cue-img-clear,
+.scene-editor .cue-del, .scene-editor .cue-add { flex: 0 0 auto; }
 
 /* ============ OUTPUT WINDOW ============ */
 body.output { cursor: none; background: #000; }

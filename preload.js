@@ -30,5 +30,7 @@ contextBridge.exposeInMainWorld('djv', {
   openRecordingsFolder: () => ipcRenderer.invoke('rec:openFolder'),
   // Pad bank persistence.
   loadPads: () => ipcRenderer.invoke('pads:load'),
-  savePads: (data) => ipcRenderer.invoke('pads:save', data)
+  savePads: (data) => ipcRenderer.invoke('pads:save', data),
+  loadPlaylist: () => ipcRenderer.invoke('playlist:load'),
+  savePlaylist: (data) => ipcRenderer.invoke('playlist:save', data)
 });

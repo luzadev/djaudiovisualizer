@@ -200,24 +200,46 @@ let playCur = 0, playDur = 0; // live progress of the currently playing track
 let padCrossfadeMs = 0;      // crossfade duration for pad triggers
 let capturingFor = -1;      // index of the track awaiting a hotkey, or -1
 let sceneEditing = -1;      // playlist index whose scene editor is open
-let sceneImgTarget = -1;    // playlist index awaiting a scene image
+let sceneImgTarget = -1, sceneCueTarget = -1; // track/cue awaiting an image
+let activeCues = [], firedCue = -1;            // cue schedule for the playing track
 
-function hasScene(tr) {
-  const s = tr.scene;
-  return !!(s && (s.effectIndex != null || (s.text && s.text.trim()) || s.image));
+function savePlaylistState() {
+  if (djv.savePlaylist) {
+    djv.savePlaylist(playlist.map(t => ({ path: t.path, name: t.name, key: t.key || null, cues: t.cues || [] })));
+  }
 }
 
-// Apply a track's scene (effect + text + image) when it starts.
-function applyScene(tr) {
-  const s = tr.scene;
-  if (!s) return;
-  if (s.effectIndex != null && EFFECTS.list[s.effectIndex]) applyEffect(EFFECTS.list[s.effectIndex]);
-  const showText = !!(s.text && s.text.trim());
-  send({ type: 'tickerText', text: s.text || '' });
+function hasScene(tr) {
+  return !!(tr.cues && tr.cues.some(c => c.effectIndex != null || (c.text && c.text.trim()) || c.image));
+}
+function parseTime(str) {
+  str = String(str).trim();
+  if (str.indexOf(':') >= 0) { const p = str.split(':').map(Number); return (p[0] || 0) * 60 + (p[1] || 0); }
+  return parseFloat(str) || 0;
+}
+
+// Apply one cue (effect optional; text and image always set so a timeline reads
+// predictably — empty text / null image hide them).
+function applyCue(c) {
+  if (!c) return;
+  if (c.effectIndex != null && EFFECTS.list[c.effectIndex]) applyEffect(EFFECTS.list[c.effectIndex]);
+  const showText = !!(c.text && c.text.trim());
+  send({ type: 'tickerText', text: c.text || '' });
   send({ type: 'tickerOn', on: showText });
-  $('#ticker-text').value = s.text || '';
+  $('#ticker-text').value = c.text || '';
   $('#ticker-on').checked = showText;
-  send({ type: 'sceneImage', path: s.image || null });
+  send({ type: 'sceneImage', path: c.image || null });
+}
+function startCues(tr) {
+  activeCues = (tr.cues || []).slice().sort((a, b) => a.time - b.time);
+  firedCue = -1;
+  advanceCues(0); // apply the base cue (time 0)
+}
+function advanceCues(t) {
+  while (firedCue + 1 < activeCues.length && t >= activeCues[firedCue + 1].time) {
+    firedCue++;
+    applyCue(activeCues[firedCue]);
+  }
 }
 
 const baseName = (p) => p.split('/').pop();
@@ -232,6 +254,7 @@ function addTracks(items) {
   const start = playlist.length;
   items.forEach(it => { if (it.path) playlist.push({ path: it.path, name: it.name || baseName(it.path), key: null }); });
   renderPlaylist();
+  savePlaylistState();
   probePaths(items.map(it => it.path));
   // Auto-start the first added track if nothing is playing yet.
   if (currentIndex < 0 && playlist.length > start) playIndex(start);
@@ -245,7 +268,7 @@ function playIndex(i) {
   playbackOwner = 'playlist';
   activePad = -1; padPlaying = false; renderPads();
   send({ type: 'playTrack', path: playlist[i].path });
-  if (playlist[i].scene) applyScene(playlist[i]);
+  startCues(playlist[i]);
   $('#btn-play').disabled = false;
   $('#btn-play').textContent = '⏸ Pausa';
   renderPlaylist();
@@ -263,7 +286,9 @@ function removeTrack(i) {
   playlist.splice(i, 1);
   if (i === currentIndex) currentIndex = -1;
   else if (i < currentIndex) currentIndex--;
+  if (sceneEditing === i) sceneEditing = -1;
   renderPlaylist();
+  savePlaylistState();
 }
 
 function moveTrack(from, to) {
@@ -274,6 +299,7 @@ function moveTrack(from, to) {
   else if (from < currentIndex && to >= currentIndex) currentIndex--;
   else if (from > currentIndex && to <= currentIndex) currentIndex++;
   renderPlaylist();
+  savePlaylistState();
 }
 
 let dragFrom = -1;
@@ -333,31 +359,48 @@ function renderPlaylist() {
     ol.appendChild(li);
 
     if (sceneEditing === i) {
-      const s = tr.scene || (tr.scene = { effectIndex: null, effectName: '', text: '', image: null });
+      const cues = tr.cues || (tr.cues = []);
+      if (cues.length === 0) cues.push({ time: 0, effectIndex: null, effectName: '', text: '', image: null });
+      cues.sort((a, b) => a.time - b.time);
       const ed = document.createElement('li');
       ed.className = 'scene-editor';
-      ed.innerHTML =
-        '<div class="se-row"><button class="se-effect">🌀 Usa effetto corrente</button>' +
-          '<span class="se-name">' + (s.effectName || '— nessun effetto —') + '</span></div>' +
-        '<input class="se-text textfield" placeholder="Testo da mostrare (vuoto = nessuno)" />' +
-        '<div class="se-row"><button class="se-img">🖼 Immagine…</button>' +
-          '<button class="se-img-clear">✕</button>' +
-          '<span class="se-name">' + (s.image ? baseName(s.image) : 'nessuna immagine') + '</span></div>' +
-        '<div class="se-row"><button class="se-clear">Rimuovi scena</button>' +
-          '<span class="hint-mini" style="margin:0">Applicata quando parte il brano</span></div>';
-      ed.querySelector('.se-text').value = s.text || '';
-      ed.querySelector('.se-effect').addEventListener('click', () => {
-        s.effectIndex = EFFECTS.list.indexOf(currentEffect);
-        s.effectName = currentEffect.name;
-        renderPlaylist();
+      let html = '<div class="se-title">🎬 Scene a tempo del brano</div>';
+      cues.forEach((c, ci) => {
+        html += '<div class="cue" data-c="' + ci + '">' +
+          '<div class="se-row"><span class="cue-at">@</span>' +
+            '<input class="cue-time" type="text" value="' + fmtTime(Math.floor(c.time)) + '" title="Tempo (mm:ss)" />' +
+            '<button class="cue-eff">🌀 effetto</button>' +
+            '<span class="se-name">' + (c.effectName || '—') + '</span>' +
+            (ci > 0 ? '<button class="cue-del" title="Rimuovi cue">✕</button>' : '') +
+          '</div>' +
+          '<input class="cue-text textfield" placeholder="Testo (vuoto = nascondi)" />' +
+          '<div class="se-row"><button class="cue-img">🖼 Immagine</button>' +
+            '<button class="cue-img-clear">✕</button>' +
+            '<span class="se-name">' + (c.image ? baseName(c.image) : 'nessuna') + '</span></div>' +
+          '</div>';
       });
-      ed.querySelector('.se-text').addEventListener('input', (e) => {
-        s.text = e.target.value;
-        li.querySelector('.scene-btn').classList.toggle('active', hasScene(tr));
+      html += '<div class="se-row"><button class="cue-add">➕ Aggiungi cue</button>' +
+        '<button class="se-clear">Rimuovi scena</button></div>' +
+        '<div class="hint-mini" style="margin:4px 0 0">La cue @00:00 parte col brano; le altre scattano al loro tempo.</div>';
+      ed.innerHTML = html;
+      ed.querySelectorAll('.cue').forEach(cueEl => {
+        const ci = parseInt(cueEl.dataset.c, 10);
+        const c = cues[ci];
+        cueEl.querySelector('.cue-text').value = c.text || '';
+        cueEl.querySelector('.cue-time').addEventListener('change', (e) => { c.time = parseTime(e.target.value); savePlaylistState(); renderPlaylist(); });
+        cueEl.querySelector('.cue-eff').addEventListener('click', () => { c.effectIndex = EFFECTS.list.indexOf(currentEffect); c.effectName = currentEffect.name; savePlaylistState(); renderPlaylist(); });
+        cueEl.querySelector('.cue-text').addEventListener('input', (e) => { c.text = e.target.value; li.querySelector('.scene-btn').classList.toggle('active', hasScene(tr)); savePlaylistState(); });
+        cueEl.querySelector('.cue-img').addEventListener('click', () => { sceneImgTarget = i; sceneCueTarget = ci; $('#scene-img-input').click(); });
+        cueEl.querySelector('.cue-img-clear').addEventListener('click', () => { c.image = null; savePlaylistState(); renderPlaylist(); });
+        const del = cueEl.querySelector('.cue-del');
+        if (del) del.addEventListener('click', () => { cues.splice(ci, 1); savePlaylistState(); renderPlaylist(); });
       });
-      ed.querySelector('.se-img').addEventListener('click', () => { sceneImgTarget = i; $('#scene-img-input').click(); });
-      ed.querySelector('.se-img-clear').addEventListener('click', () => { s.image = null; renderPlaylist(); });
-      ed.querySelector('.se-clear').addEventListener('click', () => { tr.scene = null; sceneEditing = -1; renderPlaylist(); });
+      ed.querySelector('.cue-add').addEventListener('click', () => {
+        const lastT = cues.length ? cues[cues.length - 1].time : 0;
+        cues.push({ time: lastT + 30, effectIndex: null, effectName: '', text: '', image: null });
+        savePlaylistState(); renderPlaylist();
+      });
+      ed.querySelector('.se-clear').addEventListener('click', () => { tr.cues = []; sceneEditing = -1; savePlaylistState(); renderPlaylist(); });
       ol.appendChild(ed);
     }
   });
@@ -375,13 +418,16 @@ $('#scene-img-input').addEventListener('change', (e) => {
   const p = f && filePath(f);
   if (p && sceneImgTarget >= 0 && playlist[sceneImgTarget]) {
     const tr = playlist[sceneImgTarget];
-    (tr.scene = tr.scene || { effectIndex: null, effectName: '', text: '', image: null }).image = p;
-    renderPlaylist();
+    tr.cues = tr.cues || [];
+    if (!tr.cues[sceneCueTarget]) sceneCueTarget = 0;
+    if (!tr.cues[sceneCueTarget]) tr.cues.push({ time: 0, effectIndex: null, effectName: '', text: '', image: null });
+    tr.cues[sceneCueTarget].image = p;
+    savePlaylistState(); renderPlaylist();
   }
-  sceneImgTarget = -1; e.target.value = '';
+  sceneImgTarget = -1; sceneCueTarget = -1; e.target.value = '';
 });
 $('#btn-clear-playlist').addEventListener('click', () => {
-  playlist = []; currentIndex = -1; renderPlaylist();
+  playlist = []; currentIndex = -1; sceneEditing = -1; renderPlaylist(); savePlaylistState();
 });
 $('#repeat-playlist').addEventListener('change', (e) => { repeat = e.target.checked; });
 $('#btn-use-input').addEventListener('click', () =>
@@ -533,6 +579,7 @@ function playPad(i) {
   }
   playbackOwner = 'pad';
   activePad = i; padPlaying = true;
+  activeCues = []; firedCue = -1; // pads don't run playlist cues
   playCur = 0; playDur = durations[p.path] || 0;
   // The playlist is no longer the active source.
   currentIndex = -1; isPlaying = false; renderPlaylist();
@@ -600,6 +647,21 @@ if (padXfade) padXfade.addEventListener('input', (e) => {
   probePaths(pads.filter(Boolean).map(p => p.path));
 })();
 
+// Load saved playlist (with per-track scenes/cues) on startup.
+(async () => {
+  try {
+    const saved = djv.loadPlaylist ? await djv.loadPlaylist() : null;
+    if (Array.isArray(saved) && saved.length) {
+      playlist = saved.map(t => ({
+        path: t.path, name: t.name || baseName(t.path),
+        key: t.key || null, cues: Array.isArray(t.cues) ? t.cues : []
+      }));
+      renderPlaylist();
+      probePaths(playlist.map(t => t.path));
+    }
+  } catch (e) { /* ignore */ }
+})();
+
 // ---------------------------------------------------------------- tabs
 document.querySelectorAll('#tabs button').forEach(btn => {
   btn.addEventListener('click', () => {
@@ -659,6 +721,7 @@ window.addEventListener('keydown', (e) => {
       const k = e.key.toLowerCase();
       playlist.forEach(t => { if (t.key === k) t.key = null; }); // keys are unique
       playlist[capturingFor].key = k;
+      savePlaylistState();
     }
     capturingFor = -1;
     renderPlaylist();
@@ -786,7 +849,8 @@ djv.onReport((m) => {
       break;
     case 'progress':
       playCur = m.currentTime; playDur = m.duration;
-      if (playbackOwner === 'pad') renderPads(); else renderPlaylist();
+      if (playbackOwner === 'pad') { renderPads(); }
+      else { advanceCues(playCur); renderPlaylist(); }
       break;
     case 'recState':
       recOn = m.recording;

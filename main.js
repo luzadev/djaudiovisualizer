@@ -181,6 +181,14 @@ ipcMain.handle('pads:save', (_e, data) => {
   try { fs.writeFileSync(padsFile(), JSON.stringify(data)); return true; } catch (e) { return false; }
 });
 
+const playlistFile = () => path.join(app.getPath('userData'), 'playlist.json');
+ipcMain.handle('playlist:load', () => {
+  try { return JSON.parse(fs.readFileSync(playlistFile(), 'utf8')); } catch (e) { return null; }
+});
+ipcMain.handle('playlist:save', (_e, data) => {
+  try { fs.writeFileSync(playlistFile(), JSON.stringify(data)); return true; } catch (e) { return false; }
+});
+
 // Read the bundled svg/ folder and return each SVG as a data: URL.
 ipcMain.handle('svg:listBuiltin', () => {
   try {
