@@ -48,6 +48,11 @@ class AudioEngine {
     // Log-spaced spectrum for VU/bar visualisers.
     this.NB = 32;
     this.spectrum = new Float32Array(this.NB);
+
+    // Time-domain waveform (oscilloscope), -1..1.
+    this.NW = 128;
+    this.wave = new Float32Array(this.NW);
+    this.timeData = new Uint8Array(this.analyser.fftSize);
   }
 
   resume() { if (this.ctx.state === 'suspended') this.ctx.resume(); }
@@ -213,6 +218,13 @@ class AudioEngine {
       this.spectrum[i] = this.spectrum[i] * 0.55 + val * 0.45; // smooth
     }
 
+    // Time-domain waveform.
+    this.analyser.getByteTimeDomainData(this.timeData);
+    const wstep = this.timeData.length / this.NW;
+    for (let i = 0; i < this.NW; i++) {
+      this.wave[i] = (this.timeData[Math.floor(i * wstep)] - 128) / 128;
+    }
+
     return this;
   }
 
@@ -222,7 +234,7 @@ class AudioEngine {
   }
 
   get values() {
-    return { bass: this.bass, mid: this.mid, treble: this.treble, level: this.level, beat: this.beat, spectrum: this.spectrum };
+    return { bass: this.bass, mid: this.mid, treble: this.treble, level: this.level, beat: this.beat, spectrum: this.spectrum, wave: this.wave };
   }
 }
 

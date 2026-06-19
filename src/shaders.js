@@ -22,6 +22,7 @@ uniform float uHueBase, uHueCycle, uSat, uContrast, uInvert, uWarp, uAudioMix, u
 uniform vec3  uColorA, uColorB;
 uniform sampler2D uTex;   // custom SVG / image source (uploaded flipped-Y)
 uniform float uSpectrum[32];   // live 32-band spectrum for VU meters
+uniform float uWave[128];      // live time-domain waveform (-1..1)
 uniform float uBgDark;         // 1 = force the empty field (v→0) to black
 
 float uT = 0.0;     // time * effect speed (set in main)
@@ -280,6 +281,56 @@ float famVUStereo(vec2 uv) {
   return v;
 }
 
+// ---- Waveform + band-reactive families ----
+float waveAt(int i) { return uWave[i]; }
+
+// Horizontal oscilloscope line.
+float famWave(vec2 uv) {
+  float xn = uv.x * 0.5 + 0.5;
+  if (xn < 0.0 || xn > 1.0) return 0.0;
+  int idx = int(clamp(xn * 128.0, 0.0, 127.0));
+  float y = waveAt(idx) * 0.42;
+  float d = abs(uv.y - y);
+  return smoothstep(0.018, 0.0, d) + 0.3 * smoothstep(0.09, 0.0, d);
+}
+
+// Radial oscilloscope: the waveform wrapped around a circle.
+float famWaveCircle(vec2 uv) {
+  float a = atan(uv.y, uv.x);
+  float r = length(uv);
+  float t = a / 6.2831853 + 0.5;
+  int idx = int(clamp(t * 128.0, 0.0, 127.0));
+  float radius = 0.42 + waveAt(idx) * 0.2 * (0.6 + uLevel * aMix);
+  float d = abs(r - radius);
+  return smoothstep(0.018, 0.0, d) + 0.28 * smoothstep(0.08, 0.0, d);
+}
+
+// Concentric zones, each reacting to a different band (inner=bass … outer=treble).
+float famTriBand(vec2 uv) {
+  float r = length(uv);
+  float band = r < 0.33 ? uBass : (r < 0.66 ? uMid : uTreble);
+  float rings = 0.5 + 0.5 * sin(r * 30.0 - uT * 3.0);
+  return rings * (0.18 + 1.6 * band * aMix) * smoothstep(1.1, 0.05, r);
+}
+
+float famBass(vec2 uv) {
+  float r = length(uv), b = uBass * aMix;
+  float blob = smoothstep(0.7 + b * 0.6, 0.0, r);
+  float rings = (0.5 + 0.5 * sin(r * 12.0 - uT * 2.0)) * smoothstep(1.2, 0.2, r);
+  return (blob + rings * 0.6) * (0.3 + 1.4 * b);
+}
+float famMid(vec2 uv) {
+  float r = length(uv), a = atan(uv.y, uv.x), m = uMid * aMix;
+  float petals = 0.5 + 0.5 * sin(a * 6.0 + uT * 2.0 + r * 8.0);
+  return petals * smoothstep(0.95, 0.0, r) * (0.25 + 1.6 * m);
+}
+float famTreble(vec2 uv) {
+  float t = uTreble * aMix, r = length(uv);
+  float g = hash(floor(uv * 42.0) + floor(vec2(uT * 8.0)));
+  float sparkle = step(0.72, g) * g;
+  return sparkle * (0.2 + 2.2 * t) * smoothstep(1.1, 0.1, r);
+}
+
 float field(int f, vec2 uv) {
   if (f == 0) return famJulia(uv);
   if (f == 1) return famMandel(uv);
@@ -303,6 +354,12 @@ float field(int f, vec2 uv) {
   if (f == 20) return famVUBars(uv);
   if (f == 21) return famVUNeedle(uv);
   if (f == 22) return famVUStereo(uv);
+  if (f == 23) return famWave(uv);
+  if (f == 24) return famWaveCircle(uv);
+  if (f == 25) return famTriBand(uv);
+  if (f == 26) return famBass(uv);
+  if (f == 27) return famMid(uv);
+  if (f == 28) return famTreble(uv);
   return famCrystals(uv); // f == 15
 }
 

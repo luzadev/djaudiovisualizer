@@ -27,7 +27,13 @@ const FAMILIES = [
   { name: 'SVG/Immagine', scale: 1.0, bgDark: true },
   { name: 'VU Barre', scale: 1.0, bgDark: true },
   { name: 'VU Analogico', scale: 1.0, bgDark: true },
-  { name: 'VU Stereo', scale: 1.0, bgDark: true }
+  { name: 'VU Stereo', scale: 1.0, bgDark: true },
+  { name: 'Waveform', scale: 1.0, bgDark: true },
+  { name: 'Waveform Radiale', scale: 1.0, bgDark: true },
+  { name: 'Tri-Banda', scale: 1.0, bgDark: true },
+  { name: 'Reattivo Bassi', scale: 1.0, bgDark: true },
+  { name: 'Reattivo Medi', scale: 1.0, bgDark: true },
+  { name: 'Reattivo Alti', scale: 1.0, bgDark: true }
 ];
 
 // Palettes: low colour (a) -> high colour (b), plus optional hue-cycle/sat.
