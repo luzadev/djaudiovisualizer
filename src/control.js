@@ -206,14 +206,47 @@ const peaksCache = {};       // path -> Array(N) of 0..1 peak amplitudes (or 'lo
 const WAVE_BUCKETS = 400;
 let playCur = 0, playDur = 0; // live progress of the currently playing track
 
-// Lazily fetch the waveform peaks for a file, then redraw its card.
+// A low-rate AudioContext used only to decode files into waveform peaks.
+let _peakCtx = null;
+function peakCtx() {
+  if (!_peakCtx) {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    try { _peakCtx = new AC({ sampleRate: 8000 }); } catch (e) { _peakCtx = new AC(); }
+  }
+  return _peakCtx;
+}
+function peaksFromAudioBuffer(buf, buckets) {
+  const ch = buf.getChannelData(0);
+  const n = ch.length, per = Math.max(1, Math.floor(n / buckets));
+  const peaks = new Array(buckets).fill(0);
+  let top = 0.0001;
+  for (let b = 0; b < buckets; b++) {
+    let m = 0; const s = b * per, e = Math.min(n, s + per);
+    for (let i = s; i < e; i++) { const v = ch[i] < 0 ? -ch[i] : ch[i]; if (v > m) m = v; }
+    peaks[b] = m; if (m > top) top = m;
+  }
+  for (let b = 0; b < buckets; b++) peaks[b] = Math.min(1, peaks[b] / top);
+  return peaks;
+}
+// Decode a file's waveform in the renderer via Web Audio (no external ffmpeg).
+function decodePeaksWebAudio(path) {
+  return djv.readFile(path).then((bytes) => {
+    if (!bytes || !bytes.byteLength) throw new Error('no bytes');
+    const ab = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+    return peakCtx().decodeAudioData(ab);
+  }).then((audioBuf) => peaksFromAudioBuffer(audioBuf, WAVE_BUCKETS));
+}
+
+// Lazily compute the waveform peaks for a file, then redraw its card. Tries
+// Web Audio first (works everywhere); falls back to ffmpeg in main if present.
 function ensurePeaks(path) {
   if (!path || peaksCache[path]) return;
   peaksCache[path] = 'loading';
-  djv.peaks(path, WAVE_BUCKETS).then((p) => {
-    peaksCache[path] = p && p.length ? p : null;
-    renderPlaylist();
-  }).catch(() => { peaksCache[path] = null; });
+  decodePeaksWebAudio(path)
+    .then((p) => { peaksCache[path] = p; renderPlaylist(); })
+    .catch(() => djv.peaks(path, WAVE_BUCKETS)
+      .then((p) => { peaksCache[path] = (p && p.length) ? p : null; renderPlaylist(); })
+      .catch(() => { peaksCache[path] = null; }));
 }
 
 // Draw a waveform on a canvas, shading the trimmed-out parts and the playhead.

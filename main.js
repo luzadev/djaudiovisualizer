@@ -134,6 +134,13 @@ function transcodeToMp4(input, output, opts) {
   });
 }
 
+// Read raw file bytes for the renderer (used to decode waveforms via Web Audio,
+// which needs no external ffmpeg). Returns null if unreadable.
+ipcMain.handle('file:read', async (_e, filePath) => {
+  try { return await fs.promises.readFile(filePath); }
+  catch (e) { return null; }
+});
+
 // Decode a media file to mono 8 kHz PCM via ffmpeg and reduce it to `buckets`
 // peak amplitudes (0..1) for drawing a waveform. Returns null on failure.
 const peaksCache = new Map();
