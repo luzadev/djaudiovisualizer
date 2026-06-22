@@ -277,7 +277,10 @@ let lastScene = { effect: null, text: null, image: null };
 function startCues(tr) {
   tr.cues = migrateCues(tr.cues || []);
   activeCues = tr.cues.slice().sort((a, b) => a.time - b.time);
-  lastScene = { effect: null, text: null, image: null };
+  // `undefined` (not null) forces advanceCues to APPLY every channel once, so a
+  // stale text/image from the previous track is cleared even when the new scene
+  // has nothing active at t=0.
+  lastScene = { effect: undefined, text: undefined, image: undefined };
   advanceCues(0);
 }
 function sceneActive(type, t) {
@@ -327,7 +330,7 @@ function applyImageEl(el) {
 function refreshScenePreview(i) {
   if (i !== currentIndex) return;
   activeCues = (playlist[i].cues || []).slice().sort((a, b) => a.time - b.time);
-  lastScene = { effect: null, text: null, image: null };
+  lastScene = { effect: undefined, text: undefined, image: undefined };
   advanceCues(playCur || 0);
 }
 
