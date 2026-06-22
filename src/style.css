@@ -294,15 +294,22 @@ textarea.textarea-lg {
 .track {
   position: relative;
   display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 8px;
-  margin-bottom: 5px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+  margin-bottom: 6px;
   background: rgba(255,255,255,0.05);
   border: 1px solid rgba(255,255,255,0.08);
   border-radius: 9px;
   font-size: 12px;
   overflow: hidden;
+}
+.track .track-head {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
 }
 .track .ttime {
   flex: 0 0 auto;
@@ -319,6 +326,28 @@ textarea.textarea-lg {
   background: linear-gradient(90deg, #5ad1ff, #7aa2ff, #ff7ad1);
   width: 0;
 }
+.track .track-body { padding: 0 8px 8px; }
+.track .track-times {
+  display: flex; gap: 10px; align-items: center;
+  font-size: 10px; font-variant-numeric: tabular-nums; margin-bottom: 5px;
+}
+.track .track-times .tt-el { color: #9be6a0; }
+.track .track-times .tt-tot { opacity: 0.7; }
+.track .track-times .tt-rem { color: #ffb3b3; margin-left: auto; }
+.track .wave {
+  display: block; width: 100%; height: 46px;
+  background: rgba(0,0,0,0.28); border-radius: 6px; cursor: ew-resize;
+  touch-action: none;
+}
+.track .track-trim {
+  display: flex; align-items: center; gap: 5px; margin-top: 6px; font-size: 10px; flex-wrap: wrap;
+}
+.track .track-trim .trim-lbl { opacity: 0.6; }
+.track .track-trim .trim-lbl-s { color: #9be6a0; opacity: 0.9; }
+.track .track-trim .trim-lbl-e { color: #ffb3b3; opacity: 0.9; }
+.track .track-trim input { width: 52px; text-align: center; padding: 4px 3px; font-variant-numeric: tabular-nums; }
+.track .track-trim button { padding: 3px 6px; }
+.track .track-trim .trim-reset { margin-left: auto; }
 .track.playing {
   background: rgba(110,150,255,0.22);
   border-color: rgba(120,170,255,0.6);

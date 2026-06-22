@@ -34,6 +34,9 @@ class AudioEngine {
     this.stream = null;       // MediaStream when using live input
     this.mode = 'none';
     this.onEnded = null;      // callback fired when a (non-looping) track ends
+    this.trimStart = 0;       // playback start point (s); seek here on load
+    this.trimEnd = 0;         // playback end point (s); 0 = play to the natural end
+    this._trimFired = false;
     this._videoSrc = null;    // persistent source for the playlist video element
     this._videoGain = null;
     this._videoSrcEl = null;
@@ -67,6 +70,28 @@ class AudioEngine {
   }
 
   resume() { if (this.ctx.state === 'suspended') this.ctx.resume(); }
+
+  // Trim the current/next track to [start, end] seconds (end 0 = natural end).
+  setTrim(start, end) {
+    this.trimStart = Math.max(0, start || 0);
+    this.trimEnd = Math.max(0, end || 0);
+    this._trimFired = false;
+  }
+  // Seek a freshly-loaded media element to the trim start (waits for metadata).
+  seekToTrimStart(el) {
+    const go = () => { if (this.trimStart > 0) { try { el.currentTime = this.trimStart; } catch (e) {} } };
+    if (el.readyState >= 1) go(); else el.addEventListener('loadedmetadata', go, { once: true });
+  }
+  // Called every frame from the output loop: stop at the trim end point.
+  checkTrim() {
+    const el = this.mediaEl;
+    if (!el || el.paused || this._trimFired) return;
+    if (this.trimEnd > 0 && el.currentTime >= this.trimEnd) {
+      this._trimFired = true;
+      try { el.pause(); } catch (e) {}
+      if (this.onEnded) this.onEnded();
+    }
+  }
 
   // Stop any current audio/video source but keep the context & analyser alive
   // (meters read 0, recording keep-alive continues). Used for visual-only
@@ -128,8 +153,10 @@ class AudioEngine {
     this.sourceGain = g;
     this.stream = null;
     this.mode = 'file';
+    this._trimFired = false;
 
     await el.play();
+    this.seekToTrimStart(el);
     return el;
   }
 

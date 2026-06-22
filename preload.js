@@ -34,5 +34,6 @@ contextBridge.exposeInMainWorld('djv', {
   loadPlaylist: () => ipcRenderer.invoke('playlist:load'),
   savePlaylist: (data) => ipcRenderer.invoke('playlist:save', data),
   exportPlaylist: (data) => ipcRenderer.invoke('playlist:export', data),
-  importPlaylist: () => ipcRenderer.invoke('playlist:import')
+  importPlaylist: () => ipcRenderer.invoke('playlist:import'),
+  peaks: (path, buckets) => ipcRenderer.invoke('audio:peaks', path, buckets)
 });

@@ -134,6 +134,37 @@ function transcodeToMp4(input, output, opts) {
   });
 }
 
+// Decode a media file to mono 8 kHz PCM via ffmpeg and reduce it to `buckets`
+// peak amplitudes (0..1) for drawing a waveform. Returns null on failure.
+const peaksCache = new Map();
+ipcMain.handle('audio:peaks', async (_e, filePath, buckets) => {
+  buckets = buckets || 400;
+  const key = filePath + '|' + buckets;
+  if (peaksCache.has(key)) return peaksCache.get(key);
+  const args = ['-v', 'quiet', '-i', filePath, '-ac', '1', '-ar', '8000', '-f', 's16le', '-'];
+  return new Promise((resolve) => {
+    execFile(ffmpegPath(), args, { encoding: 'buffer', maxBuffer: 1 << 28 }, (err, stdout) => {
+      if (err || !stdout || stdout.length < 4) { resolve(null); return; }
+      const u8 = Uint8Array.from(stdout);
+      const samples = new Int16Array(u8.buffer, 0, u8.length >> 1);
+      const n = samples.length;
+      const peaks = new Array(buckets).fill(0);
+      const per = Math.max(1, Math.floor(n / buckets));
+      for (let b = 0; b < buckets; b++) {
+        let max = 0;
+        const s = b * per, e = Math.min(n, s + per);
+        for (let i = s; i < e; i++) { const v = samples[i] < 0 ? -samples[i] : samples[i]; if (v > max) max = v; }
+        peaks[b] = max / 32768;
+      }
+      // Normalize so the loudest peak fills the height.
+      const top = Math.max(0.0001, ...peaks);
+      for (let b = 0; b < buckets; b++) peaks[b] = Math.min(1, peaks[b] / top);
+      peaksCache.set(key, peaks);
+      resolve(peaks);
+    });
+  });
+});
+
 function recordingsDir() {
   const dir = path.join(app.getPath('videos'), 'DJ Visualizer');
   fs.mkdirSync(dir, { recursive: true });

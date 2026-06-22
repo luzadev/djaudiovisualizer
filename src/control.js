@@ -202,7 +202,106 @@ let isPlaying = false;       // whether the current track is playing
 let ended = false;           // true when the current track reached its end
 let playbackOwner = 'playlist'; // 'playlist' or 'pad' — who started playback
 const durations = {};        // path -> seconds (probed from the output window)
+const peaksCache = {};       // path -> Array(N) of 0..1 peak amplitudes (or 'loading')
+const WAVE_BUCKETS = 400;
 let playCur = 0, playDur = 0; // live progress of the currently playing track
+
+// Lazily fetch the waveform peaks for a file, then redraw its card.
+function ensurePeaks(path) {
+  if (!path || peaksCache[path]) return;
+  peaksCache[path] = 'loading';
+  djv.peaks(path, WAVE_BUCKETS).then((p) => {
+    peaksCache[path] = p && p.length ? p : null;
+    renderPlaylist();
+  }).catch(() => { peaksCache[path] = null; });
+}
+
+// Draw a waveform on a canvas, shading the trimmed-out parts and the playhead.
+function drawWave(canvas, tr, isCur) {
+  const peaks = peaksCache[tr.path];
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width, h = canvas.height, mid = h / 2;
+  ctx.clearRect(0, 0, w, h);
+  if (!Array.isArray(peaks)) { // still loading / unavailable
+    ctx.fillStyle = 'rgba(255,255,255,0.06)';
+    ctx.fillRect(0, mid - 1, w, 2);
+    return;
+  }
+  const dur = durations[tr.path] || 0;
+  const s = tr.start || 0;
+  const e = tr.end > 0 ? tr.end : dur;
+  const sx = dur > 0 ? (s / dur) * w : 0;
+  const ex = dur > 0 ? (e / dur) * w : w;
+  const N = peaks.length;
+  for (let x = 0; x < w; x++) {
+    const pk = peaks[Math.min(N - 1, Math.floor(x / w * N))];
+    const bar = Math.max(1, pk * (h * 0.46));
+    const inTrim = x >= sx && x <= ex;
+    ctx.fillStyle = inTrim ? 'rgba(140,182,255,0.85)' : 'rgba(140,182,255,0.18)';
+    ctx.fillRect(x, mid - bar, 1, bar * 2);
+  }
+  // trim handles
+  if (dur > 0) {
+    ctx.fillStyle = '#6ee7a0'; ctx.fillRect(sx, 0, 2, h);       // start (green)
+    ctx.fillStyle = '#ff9a9a'; ctx.fillRect(ex - 2, 0, 2, h);   // end (red)
+  }
+  // playhead
+  if (isCur && playDur > 0) {
+    const px = Math.min(w, (playCur / playDur) * w);
+    ctx.fillStyle = '#ffffff'; ctx.fillRect(px, 0, 1.5, h);
+  }
+}
+
+// Clamp and persist a track's start/end; push it live to the output if playing.
+function commitTrim(tr, i, rerender) {
+  const dur = durations[tr.path] || 0;
+  tr.start = Math.max(0, tr.start || 0);
+  if (dur > 0 && tr.start > dur) tr.start = dur;
+  if (tr.end > 0) {
+    if (dur > 0 && tr.end > dur) tr.end = dur;
+    if (tr.end <= tr.start + 0.2) tr.end = Math.min(dur || tr.start + 1, tr.start + 1);
+  }
+  savePlaylistState();
+  if (i === currentIndex) send({ type: 'setTrim', start: tr.start || 0, end: tr.end || 0 });
+  if (rerender) renderPlaylist();
+}
+
+// Wire the trim inputs, the "set to current" buttons and waveform drag handles.
+function wireTrim(li, canvas, tr, i) {
+  const sIn = li.querySelector('.trim-start');
+  const eIn = li.querySelector('.trim-end');
+  sIn.addEventListener('change', () => { tr.start = parseTime(sIn.value); commitTrim(tr, i, true); });
+  eIn.addEventListener('change', () => { tr.end = eIn.value.trim() ? parseTime(eIn.value) : 0; commitTrim(tr, i, true); });
+  li.querySelector('.trim-here-s').addEventListener('click', () => { if (i === currentIndex) { tr.start = Math.max(0, playCur); commitTrim(tr, i, true); } });
+  li.querySelector('.trim-here-e').addEventListener('click', () => { if (i === currentIndex) { tr.end = Math.max(0.5, playCur); commitTrim(tr, i, true); } });
+  li.querySelector('.trim-reset').addEventListener('click', () => { tr.start = 0; tr.end = 0; commitTrim(tr, i, true); });
+
+  let dragH = null;
+  const dur = () => durations[tr.path] || (i === currentIndex ? playDur : 0) || 0;
+  const timeAt = (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const f = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    return f * dur();
+  };
+  canvas.addEventListener('pointerdown', (e) => {
+    if (!dur()) return;
+    const t = timeAt(e), s = tr.start || 0, en = tr.end > 0 ? tr.end : dur();
+    dragH = Math.abs(t - s) <= Math.abs(t - en) ? 'start' : 'end';
+    canvas.setPointerCapture(e.pointerId); e.preventDefault();
+  });
+  canvas.addEventListener('pointermove', (e) => {
+    if (!dragH) return;
+    const t = timeAt(e);
+    if (dragH === 'start') tr.start = Math.max(0, Math.min(t, (tr.end > 0 ? tr.end : dur()) - 0.5));
+    else tr.end = Math.min(dur(), Math.max(t, (tr.start || 0) + 0.5));
+    drawWave(canvas, tr, i === currentIndex);
+    sIn.value = fmtTime(Math.floor(tr.start || 0));
+    eIn.value = tr.end > 0 ? fmtTime(Math.floor(tr.end)) : '';
+  });
+  const endDrag = () => { if (dragH) { dragH = null; commitTrim(tr, i, true); } };
+  canvas.addEventListener('pointerup', endDrag);
+  canvas.addEventListener('pointercancel', endDrag);
+}
 let padCrossfadeMs = 0;      // crossfade duration for pad triggers
 let capturingFor = -1;      // index of the track awaiting a hotkey, or -1
 let sceneEditing = -1;      // playlist index whose scene editor is open
@@ -210,10 +309,10 @@ let sceneImgTarget = -1, sceneCueTarget = -1; // track/cue awaiting an image
 let activeCues = [], firedCue = -1;            // cue schedule for the playing track
 
 function serializePlaylist() {
-  return playlist.map(t => ({ path: t.path, name: t.name, key: t.key || null, cues: t.cues || [], isVideo: !!t.isVideo, gap: t.gap || 0, isInterlude: !!t.isInterlude, duration: t.duration || 0 }));
+  return playlist.map(t => ({ path: t.path, name: t.name, key: t.key || null, cues: t.cues || [], isVideo: !!t.isVideo, gap: t.gap || 0, isInterlude: !!t.isInterlude, duration: t.duration || 0, start: t.start || 0, end: t.end || 0 }));
 }
 function normalizeTrack(t) {
-  return { path: t.path || '', name: t.name || baseName(t.path || '') || 'Intermezzo', key: t.key || null, cues: migrateCues(Array.isArray(t.cues) ? t.cues : []), isVideo: !!t.isVideo, gap: t.gap || 0, isInterlude: !!t.isInterlude, duration: t.duration || 0 };
+  return { path: t.path || '', name: t.name || baseName(t.path || '') || 'Intermezzo', key: t.key || null, cues: migrateCues(Array.isArray(t.cues) ? t.cues : []), isVideo: !!t.isVideo, gap: t.gap || 0, isInterlude: !!t.isInterlude, duration: t.duration || 0, start: t.start || 0, end: t.end || 0 };
 }
 function savePlaylistState() {
   if (djv.savePlaylist) djv.savePlaylist(serializePlaylist());
@@ -362,7 +461,7 @@ function probePaths(paths) {
 function addTracks(items) {
   // items: array of { path, name }
   const start = playlist.length;
-  items.forEach(it => { if (it.path) playlist.push({ path: it.path, name: it.name || baseName(it.path), key: null, cues: [], isVideo: !!it.isVideo, gap: 0 }); });
+  items.forEach(it => { if (it.path) playlist.push({ path: it.path, name: it.name || baseName(it.path), key: null, cues: [], isVideo: !!it.isVideo, gap: 0, start: 0, end: 0 }); });
   renderPlaylist();
   savePlaylistState();
   probePaths(items.map(it => it.path));
@@ -393,7 +492,7 @@ function playIndex(i) {
     playInterlude(tr);
     return;
   }
-  send({ type: tr.isVideo ? 'playVideoTrack' : 'playTrack', path: tr.path });
+  send({ type: tr.isVideo ? 'playVideoTrack' : 'playTrack', path: tr.path, start: tr.start || 0, end: tr.end || 0 });
   startCues(tr);
   renderPlaylist();
 }
@@ -668,16 +767,46 @@ function renderPlaylist() {
     const prog = (isCur && playDur > 0) ? Math.min(100, playCur / playDur * 100) : 0;
     const gapBadge = (tr.gap > 0 && !tr.isInterlude) ? '<span class="gap-badge" title="Pausa di ' + tr.gap + 's dopo questo brano">⏸' + tr.gap + 's</span>' : '';
     const icon = tr.isInterlude ? '✨ ' : (tr.isVideo ? '🎞 ' : '');
+
+    // Total / elapsed / remaining for the trimmed range.
+    const dur = durations[tr.path] || (isCur ? playDur : 0);
+    const tStart = tr.start || 0;
+    const tEnd = tr.end > 0 ? tr.end : dur;
+    const total = Math.max(0, tEnd - tStart);
+    const elapsed = isCur ? Math.max(0, Math.min(total, playCur - tStart)) : 0;
+    const remaining = Math.max(0, total - elapsed);
+
+    const body = (tr.isInterlude || !tr.path) ? '' :
+      '<div class="track-body">' +
+        '<div class="track-times">' +
+          '<span class="tt-el" title="Trascorso">▶ ' + fmtTime(Math.floor(elapsed)) + '</span>' +
+          '<span class="tt-tot" title="Durata totale">⏱ ' + fmtTime(Math.floor(total)) + '</span>' +
+          '<span class="tt-rem" title="Rimasto">⧗ -' + fmtTime(Math.ceil(remaining)) + '</span>' +
+        '</div>' +
+        '<canvas class="wave" width="' + WAVE_BUCKETS + '" height="46"></canvas>' +
+        '<div class="track-trim">' +
+          '<span class="trim-lbl trim-lbl-s">Inizio</span>' +
+          '<input class="trim-start" type="text" value="' + fmtTime(Math.floor(tStart)) + '" title="Punto di inizio (mm:ss)" />' +
+          '<button class="trim-here-s" title="Imposta inizio al punto attuale">📍</button>' +
+          '<span class="trim-lbl trim-lbl-e">Fine</span>' +
+          '<input class="trim-end" type="text" value="' + (tr.end > 0 ? fmtTime(Math.floor(tr.end)) : '') + '" placeholder="—" title="Punto di fine (mm:ss, vuoto = fine brano)" />' +
+          '<button class="trim-here-e" title="Imposta fine al punto attuale">📍</button>' +
+          '<button class="trim-reset" title="Azzera inizio/fine">↺</button>' +
+        '</div>' +
+      '</div>';
+
     li.innerHTML =
-      '<span class="grip">⠿</span>' +
-      '<span class="tname' + (tr.isInterlude ? ' is-interlude' : '') + '" title="Avvia / riavvia dall\'inizio — ' + tr.name.replace(/"/g, '&quot;') + '">' + icon + tr.name + gapBadge + '</span>' +
-      '<span class="ttime">' + timeLabel + '</span>' +
-      '<button class="key-btn" title="Assegna tasto rapido">' +
-        (capturingFor === i ? '…' : (tr.key ? tr.key.toUpperCase() : '⌨')) + '</button>' +
-      '<button class="play-btn" title="' + (isCur && isPlaying ? 'Pausa' : 'Avvia') + '">' + playIcon + '</button>' +
-      '<button class="scene-btn' + (hasScene(tr) ? ' active' : '') + '" title="Scena del brano (effetto/testo/immagine)">🎬</button>' +
-      '<button class="del-btn" title="Rimuovi">✕</button>' +
-      (isCur ? '<i class="tprog" style="width:' + prog.toFixed(1) + '%"></i>' : '');
+      '<div class="track-head">' +
+        '<span class="grip">⠿</span>' +
+        '<span class="tname' + (tr.isInterlude ? ' is-interlude' : '') + '" title="Avvia / riavvia dall\'inizio — ' + tr.name.replace(/"/g, '&quot;') + '">' + icon + tr.name + gapBadge + '</span>' +
+        '<span class="ttime">' + timeLabel + '</span>' +
+        '<button class="key-btn" title="Assegna tasto rapido">' +
+          (capturingFor === i ? '…' : (tr.key ? tr.key.toUpperCase() : '⌨')) + '</button>' +
+        '<button class="play-btn" title="' + (isCur && isPlaying ? 'Pausa' : 'Avvia') + '">' + playIcon + '</button>' +
+        '<button class="scene-btn' + (hasScene(tr) ? ' active' : '') + '" title="Scena del brano (effetto/testo/immagine)">🎬</button>' +
+        '<button class="del-btn" title="Rimuovi">✕</button>' +
+        (isCur ? '<i class="tprog" style="width:' + prog.toFixed(1) + '%"></i>' : '') +
+      '</div>' + body;
 
     // Clicking the name (re)starts the track from the beginning.
     li.querySelector('.tname').addEventListener('click', () => playIndex(i));
@@ -695,6 +824,14 @@ function renderPlaylist() {
       sceneEditing = sceneEditing === i ? -1 : i;
       renderPlaylist();
     });
+
+    // Waveform + trim controls.
+    const canvas = li.querySelector('.wave');
+    if (canvas) {
+      ensurePeaks(tr.path);
+      drawWave(canvas, tr, isCur);
+      wireTrim(li, canvas, tr, i);
+    }
 
     // Drag to reorder.
     li.addEventListener('dragstart', () => { dragFrom = i; li.classList.add('dragging'); });

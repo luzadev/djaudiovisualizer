@@ -323,6 +323,7 @@ djv.onControl(async (m) => {
       try {
         // Switching to an audio track: stop/hide any playing video track.
         trackVideo.pause(); trackVideo.classList.remove('show');
+        audio.setTrim(m.start || 0, m.end || 0);
         audio.onEnded = () => djv.report({ type: 'trackEnded' });
         await audio.loadFile(toFileURL(m.path), { loop: false, crossfade: m.crossfade || 0 });
         hideHint();
@@ -331,6 +332,7 @@ djv.onControl(async (m) => {
       break;
     case 'playVideoTrack':
       try {
+        audio.setTrim(m.start || 0, m.end || 0);
         audio.onEnded = () => djv.report({ type: 'trackEnded' });
         audio.attachVideo(trackVideo);
         trackVideo.loop = false; trackVideo.muted = false;
@@ -341,6 +343,7 @@ djv.onControl(async (m) => {
         trackVideo.load();
         trackVideo.classList.add('show');
         await trackVideo.play();
+        audio.seekToTrimStart(trackVideo);
         hideHint();
         djv.report({ type: 'playState', playing: true });
       } catch (e) { djv.report({ type: 'error', message: e.message }); }
@@ -355,6 +358,7 @@ djv.onControl(async (m) => {
         djv.report({ type: 'playState', playing: true });
       } catch (e) { djv.report({ type: 'error', message: e.message }); }
       break;
+    case 'setTrim': audio.setTrim(m.start || 0, m.end || 0); break;
     case 'probeDurations': probeDurations(m.paths || []); break;
     case 'togglePlay': {
       const playing = audio.togglePlay();
@@ -470,6 +474,8 @@ function frame() {
     lastReport = now;
     djv.report({ type: 'meters', bass: a.bass, mid: a.mid, treble: a.treble, fps });
   }
+  // Stop at the trim end point if one is set.
+  audio.checkTrim();
   // Playback progress for the currently playing file.
   if (now - lastProgress > 400) {
     lastProgress = now;
