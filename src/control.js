@@ -353,6 +353,30 @@ function defaultCue(time) {
   return { time, effectIndex: null, effectName: '', text: '', textStyle: null, image: null, imageSize: 60, imagePos: 'center' };
 }
 
+// Build the <option> list of effect families for a cue's effect picker.
+function cueFamilyOptions(selFam) {
+  let s = '<option value="-1"' + (selFam < 0 ? ' selected' : '') + '>— nessun effetto —</option>';
+  EFFECTS.families.forEach((name, i) => {
+    s += '<option value="' + i + '"' + (i === selFam ? ' selected' : '') + '>' + name + '</option>';
+  });
+  return s;
+}
+// Build the <option> list of presets within a family for a cue's effect picker.
+function cuePresetOptions(fam, selIdx) {
+  if (fam < 0) return '<option value="">—</option>';
+  let s = '';
+  for (let i = 0; i < EFFECTS.list.length; i++) {
+    if (EFFECTS.list[i].family !== fam) continue;
+    s += '<option value="' + i + '"' + (i === selIdx ? ' selected' : '') + '>' + EFFECTS.list[i].name + '</option>';
+  }
+  return s;
+}
+// First preset index of a family (used when a family is chosen).
+function firstPresetOfFamily(fam) {
+  for (let i = 0; i < EFFECTS.list.length; i++) if (EFFECTS.list[i].family === fam) return i;
+  return -1;
+}
+
 // Build the per-track scene editor (timeline of cues with text + image styling).
 function buildSceneEditor(tr, i, li) {
   const cues = tr.cues || (tr.cues = []);
@@ -364,13 +388,25 @@ function buildSceneEditor(tr, i, li) {
   const posLabels = { center: 'Centro', top: 'Alto', bottom: 'Basso', left: 'Sinistra', right: 'Destra' };
   let html = '<div class="se-title">🎬 Scene a tempo <small>— la cue @00:00 parte col brano, le altre scattano al loro tempo</small></div>';
   cues.forEach((c, ci) => {
+    const ce = (c.effectIndex != null && EFFECTS.list[c.effectIndex]) ? EFFECTS.list[c.effectIndex] : null;
+    const cFam = ce ? ce.family : -1;
     html +=
       '<div class="cue" data-c="' + ci + '">' +
         '<div class="cue-head">' +
           '<span class="cue-at">@</span>' +
           '<input class="cue-time" type="text" value="' + fmtTime(Math.floor(c.time)) + '" title="Tempo (mm:ss)" />' +
-          '<button class="cue-eff" title="Usa l\'effetto attualmente visibile">🌀 ' + (c.effectName || 'imposta effetto') + '</button>' +
           (ci > 0 ? '<button class="cue-del" title="Rimuovi cue">✕</button>' : '<span class="cue-base">base</span>') +
+        '</div>' +
+        '<div class="cue-block">' +
+          '<div class="cue-bh">🌀 Effetto</div>' +
+          '<div class="cue-row">' +
+            '<select class="cue-eff-fam" title="Categoria effetto">' + cueFamilyOptions(cFam) + '</select>' +
+            '<select class="cue-eff-pre" title="Preset"' + (cFam < 0 ? ' disabled' : '') + '>' + cuePresetOptions(cFam, c.effectIndex) + '</select>' +
+          '</div>' +
+          '<div class="cue-row">' +
+            '<button class="cue-eff-cur" title="Usa l\'effetto attualmente visibile">🎯 Usa corrente</button>' +
+            '<span class="cue-eff-name">' + (ce ? ce.name : 'nessuno') + '</span>' +
+          '</div>' +
         '</div>' +
         '<div class="cue-block">' +
           '<div class="cue-bh">🔤 Testo</div>' +
@@ -404,7 +440,17 @@ function buildSceneEditor(tr, i, li) {
     const c = cues[ci];
     cueEl.querySelector('.cue-text').value = c.text || '';
     cueEl.querySelector('.cue-time').addEventListener('change', (e) => { c.time = parseTime(e.target.value); savePlaylistState(); renderPlaylist(); });
-    cueEl.querySelector('.cue-eff').addEventListener('click', () => { c.effectIndex = EFFECTS.list.indexOf(currentEffect); c.effectName = currentEffect.name; savePlaylistState(); renderPlaylist(); });
+    cueEl.querySelector('.cue-eff-fam').addEventListener('change', (e) => {
+      const fam = parseInt(e.target.value, 10);
+      if (fam < 0) { c.effectIndex = null; c.effectName = ''; }
+      else { const idx = firstPresetOfFamily(fam); c.effectIndex = idx; c.effectName = idx >= 0 ? EFFECTS.list[idx].name : ''; }
+      savePlaylistState(); renderPlaylist();
+    });
+    cueEl.querySelector('.cue-eff-pre').addEventListener('change', (e) => {
+      const idx = parseInt(e.target.value, 10);
+      if (idx >= 0 && EFFECTS.list[idx]) { c.effectIndex = idx; c.effectName = EFFECTS.list[idx].name; savePlaylistState(); renderPlaylist(); }
+    });
+    cueEl.querySelector('.cue-eff-cur').addEventListener('click', () => { c.effectIndex = EFFECTS.list.indexOf(currentEffect); c.effectName = currentEffect.name; savePlaylistState(); renderPlaylist(); });
     cueEl.querySelector('.cue-text').addEventListener('input', (e) => { c.text = e.target.value; li.querySelector('.scene-btn').classList.toggle('active', hasScene(tr)); savePlaylistState(); });
     cueEl.querySelector('.cue-tstyle').addEventListener('click', () => { c.textStyle = captureTextStyle(); savePlaylistState(); renderPlaylist(); });
     const tsc = cueEl.querySelector('.cue-tstyle-clear');

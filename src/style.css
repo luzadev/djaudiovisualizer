@@ -372,8 +372,10 @@ textarea.textarea-lg {
 .scene-editor .cue-head { display: flex; align-items: center; gap: 6px; }
 .scene-editor .cue-at { opacity: 0.5; flex: 0 0 auto; }
 .scene-editor .cue-time { width: 60px; flex: 0 0 auto; text-align: center; padding: 6px 4px; font-variant-numeric: tabular-nums; }
-.scene-editor .cue-eff { flex: 1; min-width: 0; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.scene-editor .cue-del { flex: 0 0 auto; color: #ff9a9a; }
+.scene-editor .cue-del { flex: 0 0 auto; color: #ff9a9a; margin-left: auto; }
+.scene-editor .cue-eff-fam, .scene-editor .cue-eff-pre { flex: 1; min-width: 0; }
+.scene-editor .cue-eff-cur { flex: 0 0 auto; }
+.scene-editor .cue-eff-name { flex: 1; min-width: 0; font-size: 10px; opacity: 0.72; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .scene-editor .cue-base { flex: 0 0 auto; font-size: 9px; opacity: 0.45; padding: 0 4px; }
 
 .scene-editor .cue-block { background: rgba(255,255,255,0.035); border-radius: 8px; padding: 7px 8px; margin-top: 7px; }

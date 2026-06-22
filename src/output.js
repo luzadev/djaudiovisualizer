@@ -332,10 +332,14 @@ djv.onControl(async (m) => {
     case 'playVideoTrack':
       try {
         audio.onEnded = () => djv.report({ type: 'trackEnded' });
-        trackVideo.loop = false; trackVideo.muted = false;
-        trackVideo.src = toFileURL(m.path);
-        trackVideo.classList.add('show');
         audio.attachVideo(trackVideo);
+        trackVideo.loop = false; trackVideo.muted = false;
+        // Force a fresh start even when re-selecting the same file:
+        // reassigning the same src may not reload, so pause + load() resets it.
+        trackVideo.pause();
+        trackVideo.src = toFileURL(m.path);
+        trackVideo.load();
+        trackVideo.classList.add('show');
         await trackVideo.play();
         hideHint();
         djv.report({ type: 'playState', playing: true });
