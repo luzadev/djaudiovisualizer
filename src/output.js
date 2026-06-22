@@ -345,6 +345,16 @@ djv.onControl(async (m) => {
         djv.report({ type: 'playState', playing: true });
       } catch (e) { djv.report({ type: 'error', message: e.message }); }
       break;
+    case 'playSilence':
+      // Visual-only interlude: stop audio + hide the video, keep visuals going.
+      try {
+        trackVideo.pause(); trackVideo.classList.remove('show');
+        audio.onEnded = null;
+        audio.silence();
+        hideHint();
+        djv.report({ type: 'playState', playing: true });
+      } catch (e) { djv.report({ type: 'error', message: e.message }); }
+      break;
     case 'probeDurations': probeDurations(m.paths || []); break;
     case 'togglePlay': {
       const playing = audio.togglePlay();

@@ -183,8 +183,14 @@ $('#seq-interval').addEventListener('input', (e) => {
 // ---------------------------------------------------------------- audio
 function togglePlayPause() {
   // If the track finished, restart it; otherwise pause/resume.
-  if (ended && currentIndex >= 0) playIndex(currentIndex);
-  else send({ type: 'togglePlay' });
+  if (ended && currentIndex >= 0) { playIndex(currentIndex); return; }
+  if (segTimer) { // a visual segment (interlude/gap) is running — pause/resume it
+    if (segPaused) { resumeSeg(); isPlaying = true; $('#btn-play').textContent = '⏸ Pausa'; }
+    else { pauseSeg(); isPlaying = false; $('#btn-play').textContent = '▶ Play'; }
+    renderPlaylist();
+    return;
+  }
+  send({ type: 'togglePlay' });
 }
 $('#btn-play').addEventListener('click', togglePlayPause);
 
@@ -204,10 +210,10 @@ let sceneImgTarget = -1, sceneCueTarget = -1; // track/cue awaiting an image
 let activeCues = [], firedCue = -1;            // cue schedule for the playing track
 
 function serializePlaylist() {
-  return playlist.map(t => ({ path: t.path, name: t.name, key: t.key || null, cues: t.cues || [], isVideo: !!t.isVideo, gap: t.gap || 0 }));
+  return playlist.map(t => ({ path: t.path, name: t.name, key: t.key || null, cues: t.cues || [], isVideo: !!t.isVideo, gap: t.gap || 0, isInterlude: !!t.isInterlude, duration: t.duration || 0 }));
 }
 function normalizeTrack(t) {
-  return { path: t.path, name: t.name || baseName(t.path), key: t.key || null, cues: migrateCues(Array.isArray(t.cues) ? t.cues : []), isVideo: !!t.isVideo, gap: t.gap || 0 };
+  return { path: t.path || '', name: t.name || baseName(t.path || '') || 'Intermezzo', key: t.key || null, cues: migrateCues(Array.isArray(t.cues) ? t.cues : []), isVideo: !!t.isVideo, gap: t.gap || 0, isInterlude: !!t.isInterlude, duration: t.duration || 0 };
 }
 function savePlaylistState() {
   if (djv.savePlaylist) djv.savePlaylist(serializePlaylist());
@@ -364,19 +370,43 @@ function addTracks(items) {
   if (currentIndex < 0 && playlist.length > start) playIndex(start);
 }
 
+// Add a visual-only interlude item (effects/text/image between tracks).
+function addInterlude() {
+  playlist.push({ path: '', name: 'Intermezzo', key: null, cues: [], isVideo: false, isInterlude: true, duration: 15, gap: 0 });
+  sceneEditing = playlist.length - 1; // open its scene editor right away
+  renderPlaylist();
+  savePlaylistState();
+}
+
 function playIndex(i) {
   if (i < 0 || i >= playlist.length) return;
   clearGap();
+  const tr = playlist[i];
   currentIndex = i;
   isPlaying = true;
   ended = false;
   playbackOwner = 'playlist';
   activePad = -1; padPlaying = false; renderPads();
-  send({ type: playlist[i].isVideo ? 'playVideoTrack' : 'playTrack', path: playlist[i].path });
-  startCues(playlist[i]);
   $('#btn-play').disabled = false;
   $('#btn-play').textContent = '⏸ Pausa';
+  if (tr.isInterlude) {
+    playInterlude(tr);
+    return;
+  }
+  send({ type: tr.isVideo ? 'playVideoTrack' : 'playTrack', path: tr.path });
+  startCues(tr);
   renderPlaylist();
+}
+
+// Visual-only interlude: silence audio, run this item's scene for its duration.
+function playInterlude(tr) {
+  send({ type: 'playSilence' });
+  startCues(tr);
+  const dur = Math.max(1, tr.duration || 15);
+  runSeg('interlude', dur, 0, () => {
+    if (tr.gap > 0) startGap(tr, tr.gap);
+    else if (!nextTrack()) stopPlaylist();
+  });
 }
 
 function nextTrack() {
@@ -387,29 +417,38 @@ function nextTrack() {
   return true;
 }
 
-// Inter-track gap: after a track ends, keep its scene timeline running for
-// `secs` seconds (so scene elements scheduled past the song length show as an
-// intermission) while the audio is silent, then advance to the next track.
-let gapTimer = null, gapRemain = 0;
-function clearGap() { if (gapTimer) { clearInterval(gapTimer); gapTimer = null; } gapRemain = 0; }
+function stopPlaylist() {
+  isPlaying = false; ended = true; $('#btn-play').textContent = '▶ Play'; renderPlaylist();
+}
+
+// Timed visual segment: drives the scene timeline with no audio for `durSecs`,
+// then runs onDone. Used both for inter-track gaps ('gap', continuing the
+// previous scene from `base`) and for visual-only interlude items ('interlude',
+// their own scene from base 0). Supports pause/resume via the Play button.
+let segTimer = null, segMode = null, segRemain = 0;
+let segDur = 0, segBase = 0, segElapsed = 0, segT0 = 0, segPaused = false, segDone = null;
+function clearGap() { if (segTimer) { clearInterval(segTimer); segTimer = null; } segMode = null; segPaused = false; segRemain = 0; }
+const clearSeg = clearGap;
+function segTick() {
+  if (segPaused) return;
+  const elapsed = segElapsed + (Date.now() - segT0) / 1000;
+  segRemain = Math.max(0, segDur - elapsed);
+  playCur = Math.min(segDur, elapsed); playDur = segDur;
+  advanceCues(segBase + elapsed);
+  renderPlaylist();
+  if (elapsed >= segDur) { const d = segDone; clearSeg(); if (d) d(); }
+}
+function runSeg(mode, durSecs, base, onDone) {
+  clearSeg();
+  segMode = mode; segDur = durSecs; segBase = base; segDone = onDone;
+  segElapsed = 0; segT0 = Date.now(); segPaused = false;
+  segTimer = setInterval(segTick, 200);
+  segTick();
+}
+function pauseSeg() { if (segTimer && !segPaused) { segElapsed += (Date.now() - segT0) / 1000; segPaused = true; } }
+function resumeSeg() { if (segTimer && segPaused) { segT0 = Date.now(); segPaused = false; } }
 function startGap(tr, secs) {
-  clearGap();
-  send({ type: 'tickerText', text: '' }); // any live ticker handled by scene cues below
-  const base = playDur || playCur || 0;
-  const t0 = Date.now();
-  gapRemain = secs;
-  const tick = () => {
-    const elapsed = (Date.now() - t0) / 1000;
-    gapRemain = Math.max(0, secs - elapsed);
-    advanceCues(base + elapsed); // drive scene elements placed after the song end
-    renderPlaylist();
-    if (elapsed >= secs) {
-      clearGap();
-      if (!nextTrack()) { isPlaying = false; ended = true; $('#btn-play').textContent = '▶ Play'; renderPlaylist(); }
-    }
-  };
-  gapTimer = setInterval(tick, 200);
-  tick();
+  runSeg('gap', secs, playDur || playCur || 0, () => { if (!nextTrack()) stopPlaylist(); });
 }
 
 function removeTrack(i) {
@@ -540,10 +579,14 @@ function buildSceneEditor(tr, i, li) {
     '<button class="add-img" title="Aggiungi immagine">➕🖼</button>' +
     '<button class="se-clear">🗑 Scena</button>' +
   '</div>' +
-  '<div class="se-gap" title="Pausa dopo questo brano: la scena continua per questi secondi prima di passare al prossimo">' +
-    '⏸ Pausa dopo <input class="cue-gap" type="number" min="0" step="1" value="' + (tr.gap || 0) + '" /> s ' +
-    '<small>la scena continua durante la pausa</small>' +
-  '</div>';
+  (tr.isInterlude
+    ? '<div class="se-gap" title="Durata dell\'intermezzo (solo scena, niente audio)">' +
+        '✨ Durata intermezzo <input class="cue-segdur" type="number" min="1" step="1" value="' + (tr.duration || 15) + '" /> s' +
+      '</div>'
+    : '<div class="se-gap" title="Pausa dopo questo brano: la scena continua per questi secondi prima di passare al prossimo">' +
+        '⏸ Pausa dopo <input class="cue-gap" type="number" min="0" step="1" value="' + (tr.gap || 0) + '" /> s ' +
+        '<small>la scena continua durante la pausa</small>' +
+      '</div>');
   ed.innerHTML = html;
 
   // re-render (used after structural changes)
@@ -598,7 +641,10 @@ function buildSceneEditor(tr, i, li) {
   ed.querySelector('.add-txt').addEventListener('click', () => addEl(newTextEl));
   ed.querySelector('.add-img').addEventListener('click', () => addEl(newImageEl));
   ed.querySelector('.se-clear').addEventListener('click', () => { tr.cues = []; sceneEditing = -1; save(); });
-  ed.querySelector('.cue-gap').addEventListener('change', (e) => { tr.gap = Math.max(0, parseFloat(e.target.value) || 0); savePlaylistState(); renderPlaylist(); });
+  const gapInput = ed.querySelector('.cue-gap');
+  if (gapInput) gapInput.addEventListener('change', (e) => { tr.gap = Math.max(0, parseFloat(e.target.value) || 0); savePlaylistState(); renderPlaylist(); });
+  const segInput = ed.querySelector('.cue-segdur');
+  if (segInput) segInput.addEventListener('change', (e) => { tr.duration = Math.max(1, parseFloat(e.target.value) || 15); savePlaylistState(); renderPlaylist(); });
   return ed;
 }
 
@@ -612,17 +658,19 @@ function renderPlaylist() {
     li.dataset.index = i;
 
     const isCur = i === currentIndex;
-    const inGap = isCur && gapTimer;
+    const inSeg = isCur && segTimer;
     const playIcon = (isCur && isPlaying) ? '⏸' : '▶';
     let timeLabel = '';
-    if (inGap) timeLabel = '⏸ ' + Math.ceil(gapRemain) + 's';
+    if (inSeg) timeLabel = (segMode === 'interlude' ? '✨ ' : '⏸ ') + Math.ceil(segRemain) + 's';
+    else if (tr.isInterlude) timeLabel = '✨ ' + fmtTime(tr.duration || 15);
     else if (isCur && playDur > 0) timeLabel = '-' + fmtTime(Math.floor(Math.max(0, playDur - playCur)));
     else if (durations[tr.path] > 0) timeLabel = fmtTime(Math.floor(durations[tr.path]));
     const prog = (isCur && playDur > 0) ? Math.min(100, playCur / playDur * 100) : 0;
-    const gapBadge = (tr.gap > 0) ? '<span class="gap-badge" title="Pausa di ' + tr.gap + 's dopo questo brano">⏸' + tr.gap + 's</span>' : '';
+    const gapBadge = (tr.gap > 0 && !tr.isInterlude) ? '<span class="gap-badge" title="Pausa di ' + tr.gap + 's dopo questo brano">⏸' + tr.gap + 's</span>' : '';
+    const icon = tr.isInterlude ? '✨ ' : (tr.isVideo ? '🎞 ' : '');
     li.innerHTML =
       '<span class="grip">⠿</span>' +
-      '<span class="tname" title="Avvia / riavvia dall\'inizio — ' + tr.name.replace(/"/g, '&quot;') + '">' + (tr.isVideo ? '🎞 ' : '') + tr.name + gapBadge + '</span>' +
+      '<span class="tname' + (tr.isInterlude ? ' is-interlude' : '') + '" title="Avvia / riavvia dall\'inizio — ' + tr.name.replace(/"/g, '&quot;') + '">' + icon + tr.name + gapBadge + '</span>' +
       '<span class="ttime">' + timeLabel + '</span>' +
       '<button class="key-btn" title="Assegna tasto rapido">' +
         (capturingFor === i ? '…' : (tr.key ? tr.key.toUpperCase() : '⌨')) + '</button>' +
@@ -665,6 +713,7 @@ function renderPlaylist() {
 }
 
 $('#btn-add-tracks').addEventListener('click', () => $('#tracks-input').click());
+$('#btn-add-interlude').addEventListener('click', addInterlude);
 $('#tracks-input').addEventListener('change', (e) => {
   const items = [...e.target.files].map(f => ({ path: filePath(f), name: f.name, isVideo: f.type.startsWith('video/') }));
   if (items.length) addTracks(items);
@@ -1150,6 +1199,7 @@ djv.onReport((m) => {
       renderPlaylist(); renderPads();
       break;
     case 'progress':
+      if (segTimer) break; // a visual segment (interlude/gap) drives time itself
       playCur = m.currentTime; playDur = m.duration;
       if (playbackOwner === 'pad') { renderPads(); }
       else { advanceCues(playCur); renderPlaylist(); }

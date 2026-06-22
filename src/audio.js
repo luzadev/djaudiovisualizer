@@ -68,6 +68,16 @@ class AudioEngine {
 
   resume() { if (this.ctx.state === 'suspended') this.ctx.resume(); }
 
+  // Stop any current audio/video source but keep the context & analyser alive
+  // (meters read 0, recording keep-alive continues). Used for visual-only
+  // playlist interludes.
+  silence() {
+    this.resume();
+    this._disconnectSource();
+    this.mediaEl = null;
+    this.mode = 'silence';
+  }
+
   _disconnectSource() {
     if (this.sourceNode) { try { this.sourceNode.disconnect(); } catch (e) {} this.sourceNode = null; }
     if (this.sourceGain) { try { this.sourceGain.disconnect(); } catch (e) {} this.sourceGain = null; }

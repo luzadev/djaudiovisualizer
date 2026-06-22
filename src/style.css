@@ -405,6 +405,7 @@ textarea.textarea-lg {
 .scene-editor .se-gap input { width: 56px; text-align: center; padding: 6px 4px; }
 .scene-editor .se-gap small { opacity: 0.5; font-size: 10px; }
 .playlist .gap-badge { margin-left: 6px; font-size: 9.5px; padding: 1px 5px; border-radius: 6px; background: rgba(255,200,120,0.18); color: #ffd27a; vertical-align: middle; }
+.playlist .tname.is-interlude { color: #c9b6ff; font-style: italic; }
 
 /* ============ OUTPUT WINDOW ============ */
 body.output { cursor: none; background: #000; }
