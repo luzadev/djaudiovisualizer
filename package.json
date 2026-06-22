@@ -1,6 +1,6 @@
 {
   "name": "dj-visualizer",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "description": "Audio-reactive fractal & abstract visualizer for external display (Mac)",
   "main": "main.js",
   "author": {
