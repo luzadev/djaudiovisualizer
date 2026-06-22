@@ -204,10 +204,10 @@ let sceneImgTarget = -1, sceneCueTarget = -1; // track/cue awaiting an image
 let activeCues = [], firedCue = -1;            // cue schedule for the playing track
 
 function serializePlaylist() {
-  return playlist.map(t => ({ path: t.path, name: t.name, key: t.key || null, cues: t.cues || [], isVideo: !!t.isVideo }));
+  return playlist.map(t => ({ path: t.path, name: t.name, key: t.key || null, cues: t.cues || [], isVideo: !!t.isVideo, gap: t.gap || 0 }));
 }
 function normalizeTrack(t) {
-  return { path: t.path, name: t.name || baseName(t.path), key: t.key || null, cues: migrateCues(Array.isArray(t.cues) ? t.cues : []), isVideo: !!t.isVideo };
+  return { path: t.path, name: t.name || baseName(t.path), key: t.key || null, cues: migrateCues(Array.isArray(t.cues) ? t.cues : []), isVideo: !!t.isVideo, gap: t.gap || 0 };
 }
 function savePlaylistState() {
   if (djv.savePlaylist) djv.savePlaylist(serializePlaylist());
@@ -273,10 +273,13 @@ function migrateCues(cues) {
 
 // Runtime: re-evaluate which element is active per channel and diff-apply it.
 let lastScene = { effect: null, text: null, image: null };
+let userTrackBlend = 'normal'; // playlist-video blend chosen by the user
+let sentTrackBlend = null;     // last blend pushed to the output (auto or manual)
 
 function startCues(tr) {
   tr.cues = migrateCues(tr.cues || []);
   activeCues = tr.cues.slice().sort((a, b) => a.time - b.time);
+  sentTrackBlend = null; // re-evaluate auto-blend for the new track
   // `undefined` (not null) forces advanceCues to APPLY every channel once, so a
   // stale text/image from the previous track is cleared even when the new scene
   // has nothing active at t=0.
@@ -295,6 +298,15 @@ function sceneActive(type, t) {
 function advanceCues(t) {
   const ef = sceneActive('effect', t);
   if (ef !== lastScene.effect) { lastScene.effect = ef; if (ef && EFFECTS.list[ef.effectIndex]) applyEffect(EFFECTS.list[ef.effectIndex]); }
+  // Auto-blend: on a video track, when a scene effect is active, blend the video
+  // ('screen') so the effect shows through underneath. Only when the user left
+  // the blend at the default 'normal' — a manual choice is always respected.
+  const curTr = playlist[currentIndex];
+  if (curTr && curTr.isVideo) {
+    const effOn = !!(ef && ef.effectIndex != null && EFFECTS.list[ef.effectIndex]);
+    const wantBlend = (effOn && userTrackBlend === 'normal') ? 'screen' : userTrackBlend;
+    if (wantBlend !== sentTrackBlend) { sentTrackBlend = wantBlend; send({ type: 'trackVideoBlend', value: wantBlend }); }
+  }
   const tx = sceneActive('text', t);
   if (tx !== lastScene.text) { lastScene.text = tx; applyTextEl(tx); }
   const im = sceneActive('image', t);
@@ -344,7 +356,7 @@ function probePaths(paths) {
 function addTracks(items) {
   // items: array of { path, name }
   const start = playlist.length;
-  items.forEach(it => { if (it.path) playlist.push({ path: it.path, name: it.name || baseName(it.path), key: null, cues: [], isVideo: !!it.isVideo }); });
+  items.forEach(it => { if (it.path) playlist.push({ path: it.path, name: it.name || baseName(it.path), key: null, cues: [], isVideo: !!it.isVideo, gap: 0 }); });
   renderPlaylist();
   savePlaylistState();
   probePaths(items.map(it => it.path));
@@ -354,6 +366,7 @@ function addTracks(items) {
 
 function playIndex(i) {
   if (i < 0 || i >= playlist.length) return;
+  clearGap();
   currentIndex = i;
   isPlaying = true;
   ended = false;
@@ -372,6 +385,31 @@ function nextTrack() {
   if (n >= playlist.length) { if (!repeat) return false; n = 0; }
   playIndex(n);
   return true;
+}
+
+// Inter-track gap: after a track ends, keep its scene timeline running for
+// `secs` seconds (so scene elements scheduled past the song length show as an
+// intermission) while the audio is silent, then advance to the next track.
+let gapTimer = null, gapRemain = 0;
+function clearGap() { if (gapTimer) { clearInterval(gapTimer); gapTimer = null; } gapRemain = 0; }
+function startGap(tr, secs) {
+  clearGap();
+  send({ type: 'tickerText', text: '' }); // any live ticker handled by scene cues below
+  const base = playDur || playCur || 0;
+  const t0 = Date.now();
+  gapRemain = secs;
+  const tick = () => {
+    const elapsed = (Date.now() - t0) / 1000;
+    gapRemain = Math.max(0, secs - elapsed);
+    advanceCues(base + elapsed); // drive scene elements placed after the song end
+    renderPlaylist();
+    if (elapsed >= secs) {
+      clearGap();
+      if (!nextTrack()) { isPlaying = false; ended = true; $('#btn-play').textContent = '▶ Play'; renderPlaylist(); }
+    }
+  };
+  gapTimer = setInterval(tick, 200);
+  tick();
 }
 
 function removeTrack(i) {
@@ -501,6 +539,10 @@ function buildSceneEditor(tr, i, li) {
     '<button class="add-txt" title="Aggiungi testo">➕🔤</button>' +
     '<button class="add-img" title="Aggiungi immagine">➕🖼</button>' +
     '<button class="se-clear">🗑 Scena</button>' +
+  '</div>' +
+  '<div class="se-gap" title="Pausa dopo questo brano: la scena continua per questi secondi prima di passare al prossimo">' +
+    '⏸ Pausa dopo <input class="cue-gap" type="number" min="0" step="1" value="' + (tr.gap || 0) + '" /> s ' +
+    '<small>la scena continua durante la pausa</small>' +
   '</div>';
   ed.innerHTML = html;
 
@@ -556,6 +598,7 @@ function buildSceneEditor(tr, i, li) {
   ed.querySelector('.add-txt').addEventListener('click', () => addEl(newTextEl));
   ed.querySelector('.add-img').addEventListener('click', () => addEl(newImageEl));
   ed.querySelector('.se-clear').addEventListener('click', () => { tr.cues = []; sceneEditing = -1; save(); });
+  ed.querySelector('.cue-gap').addEventListener('change', (e) => { tr.gap = Math.max(0, parseFloat(e.target.value) || 0); savePlaylistState(); renderPlaylist(); });
   return ed;
 }
 
@@ -569,14 +612,17 @@ function renderPlaylist() {
     li.dataset.index = i;
 
     const isCur = i === currentIndex;
+    const inGap = isCur && gapTimer;
     const playIcon = (isCur && isPlaying) ? '⏸' : '▶';
     let timeLabel = '';
-    if (isCur && playDur > 0) timeLabel = '-' + fmtTime(Math.floor(Math.max(0, playDur - playCur)));
+    if (inGap) timeLabel = '⏸ ' + Math.ceil(gapRemain) + 's';
+    else if (isCur && playDur > 0) timeLabel = '-' + fmtTime(Math.floor(Math.max(0, playDur - playCur)));
     else if (durations[tr.path] > 0) timeLabel = fmtTime(Math.floor(durations[tr.path]));
     const prog = (isCur && playDur > 0) ? Math.min(100, playCur / playDur * 100) : 0;
+    const gapBadge = (tr.gap > 0) ? '<span class="gap-badge" title="Pausa di ' + tr.gap + 's dopo questo brano">⏸' + tr.gap + 's</span>' : '';
     li.innerHTML =
       '<span class="grip">⠿</span>' +
-      '<span class="tname" title="Avvia / riavvia dall\'inizio — ' + tr.name.replace(/"/g, '&quot;') + '">' + (tr.isVideo ? '🎞 ' : '') + tr.name + '</span>' +
+      '<span class="tname" title="Avvia / riavvia dall\'inizio — ' + tr.name.replace(/"/g, '&quot;') + '">' + (tr.isVideo ? '🎞 ' : '') + tr.name + gapBadge + '</span>' +
       '<span class="ttime">' + timeLabel + '</span>' +
       '<button class="key-btn" title="Assegna tasto rapido">' +
         (capturingFor === i ? '…' : (tr.key ? tr.key.toUpperCase() : '⌨')) + '</button>' +
@@ -656,7 +702,7 @@ $('#btn-pl-load').addEventListener('click', async () => {
 
 // Playlist-video rendering (blend / opacity / fit).
 $('#tvid-fit').addEventListener('change', (e) => send({ type: 'trackVideoFit', value: e.target.value }));
-$('#tvid-blend').addEventListener('change', (e) => send({ type: 'trackVideoBlend', value: e.target.value }));
+$('#tvid-blend').addEventListener('change', (e) => { userTrackBlend = e.target.value; sentTrackBlend = e.target.value; send({ type: 'trackVideoBlend', value: e.target.value }); });
 $('#tvid-op').addEventListener('input', (e) => {
   const v = parseInt(e.target.value, 10);
   $('#tvid-op-val').textContent = v + '%';
@@ -828,6 +874,7 @@ function playPad(i) {
     padPlaying = false; renderPads();
     return;
   }
+  clearGap();
   playbackOwner = 'pad';
   activePad = i; padPlaying = true;
   activeCues = []; firedCue = -1; lastScene = { effect: null, text: null, image: null }; // pads don't run playlist cues
@@ -1077,12 +1124,18 @@ djv.onReport((m) => {
       if (playbackOwner === 'pad') {
         padPlaying = false;
         renderPads();
-      } else if (!nextTrack()) {
-        // No next track: reset to a stopped state so the button shows ▶ again.
-        isPlaying = false;
-        ended = true;
-        $('#btn-play').textContent = '▶ Play';
-        renderPlaylist();
+      } else {
+        const endedTr = playlist[currentIndex];
+        const gap = (endedTr && endedTr.gap) || 0;
+        if (gap > 0) {
+          startGap(endedTr, gap); // intermission, then advance
+        } else if (!nextTrack()) {
+          // No next track: reset to a stopped state so the button shows ▶ again.
+          isPlaying = false;
+          ended = true;
+          $('#btn-play').textContent = '▶ Play';
+          renderPlaylist();
+        }
       }
       break;
     case 'beat':

@@ -401,6 +401,10 @@ textarea.textarea-lg {
 .scene-editor .cue-dim { flex: 0 0 auto; font-size: 10px; opacity: 0.55; }
 .scene-editor .se-foot { display: flex; gap: 6px; margin-top: 2px; flex-wrap: wrap; }
 .scene-editor .se-foot .se-clear { color: #ff9a9a; margin-left: auto; }
+.scene-editor .se-gap { display: flex; align-items: center; gap: 6px; margin-top: 9px; font-size: 12px; opacity: 0.9; }
+.scene-editor .se-gap input { width: 56px; text-align: center; padding: 6px 4px; }
+.scene-editor .se-gap small { opacity: 0.5; font-size: 10px; }
+.playlist .gap-badge { margin-left: 6px; font-size: 9.5px; padding: 1px 5px; border-radius: 6px; background: rgba(255,200,120,0.18); color: #ffd27a; vertical-align: middle; }
 
 /* ============ OUTPUT WINDOW ============ */
 body.output { cursor: none; background: #000; }
