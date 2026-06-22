@@ -15,6 +15,7 @@
 
   <nav id="tabs">
     <button data-tab="audio" class="active">🎵 Audio</button>
+    <button data-tab="playlist">🎶 Playlist</button>
     <button data-tab="effetti">🌀 Effetti</button>
     <button data-tab="pad">🎹 Pad</button>
     <button data-tab="immagini">🖼 Immagini</button>
@@ -44,6 +45,26 @@
         <div class="meter"><span>HIGH</span><div class="bar"><i id="m-treble"></i></div></div>
       </section>
 
+      <section>
+        <label>Reattività <span id="gain-val">1.0×</span></label>
+        <input type="range" id="gain" min="0" max="3" step="0.05" value="1" />
+        <label>Velocità <span id="speed-val">1.0×</span></label>
+        <input type="range" id="speed" min="0" max="3" step="0.05" value="1" />
+      </section>
+
+      <section>
+        <label>Equalizzatore visual</label>
+        <label class="band band-bass">Bassi <span id="bass-gain-val">1.0×</span></label>
+        <input type="range" id="bass-gain" min="0" max="3" step="0.05" value="1" />
+        <label class="band band-mid">Medi <span id="mid-gain-val">1.0×</span></label>
+        <input type="range" id="mid-gain" min="0" max="3" step="0.05" value="1" />
+        <label class="band band-treble">Alti <span id="treble-gain-val">1.0×</span></label>
+        <input type="range" id="treble-gain" min="0" max="3" step="0.05" value="1" />
+      </section>
+    </div>
+
+    <!-- ============ PLAYLIST ============ -->
+    <div class="tab-panel" data-tab="playlist">
       <section class="span2">
         <label>Playlist <span id="playlist-count">0 brani</span></label>
         <div class="row">
@@ -58,10 +79,10 @@
         <input type="file" id="tracks-input" accept="audio/*,video/*" multiple hidden />
         <input type="file" id="scene-img-input" accept="image/*" hidden />
         <ol id="playlist" class="playlist"></ol>
-        <div class="hint-mini">Clic sul <b>nome</b> = avvia/riavvia · ▶/⏸ pausa · ⠿ riordina · ⌨ tasto rapido · 🎬 <b>scena</b> (effetto+testo+immagine applicati quando parte il brano)</div>
+        <div class="hint-mini">Clic sul <b>nome</b> = avvia/riavvia · ▶/⏸ pausa · ⠿ riordina · ⌨ tasto rapido · 🎬 <b>scena</b> (effetto/testo/immagine, ognuno col proprio tempo)</div>
       </section>
 
-      <section>
+      <section class="span2">
         <label>Resa video in playlist</label>
         <select id="tvid-fit">
           <option value="contain">Adatta (bordi neri)</option>
@@ -78,23 +99,6 @@
         <label>Opacità <span id="tvid-op-val">100%</span></label>
         <input type="range" id="tvid-op" min="0" max="100" step="1" value="100" />
         <div class="hint-mini">Si applica al video riprodotto dalla playlist (per fonderlo con gli effetti).</div>
-      </section>
-
-      <section>
-        <label>Reattività <span id="gain-val">1.0×</span></label>
-        <input type="range" id="gain" min="0" max="3" step="0.05" value="1" />
-        <label>Velocità <span id="speed-val">1.0×</span></label>
-        <input type="range" id="speed" min="0" max="3" step="0.05" value="1" />
-      </section>
-
-      <section>
-        <label>Equalizzatore visual</label>
-        <label class="band band-bass">Bassi <span id="bass-gain-val">1.0×</span></label>
-        <input type="range" id="bass-gain" min="0" max="3" step="0.05" value="1" />
-        <label class="band band-mid">Medi <span id="mid-gain-val">1.0×</span></label>
-        <input type="range" id="mid-gain" min="0" max="3" step="0.05" value="1" />
-        <label class="band band-treble">Alti <span id="treble-gain-val">1.0×</span></label>
-        <input type="range" id="treble-gain" min="0" max="3" step="0.05" value="1" />
       </section>
     </div>
 
