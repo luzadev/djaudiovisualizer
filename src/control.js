@@ -276,31 +276,56 @@ function wireTrim(li, canvas, tr, i) {
   li.querySelector('.trim-here-e').addEventListener('click', () => { if (i === currentIndex) { tr.end = Math.max(0.5, playCur); commitTrim(tr, i, true); } });
   li.querySelector('.trim-reset').addEventListener('click', () => { tr.start = 0; tr.end = 0; commitTrim(tr, i, true); });
 
-  let dragH = null;
+  // Pointer on the waveform: grab a trim handle if near one, otherwise SEEK —
+  // scrub the playhead on the current track, or start a stopped track from there.
+  const HANDLE_PX = 10;
+  let mode = null;
   const dur = () => durations[tr.path] || (i === currentIndex ? playDur : 0) || 0;
-  const timeAt = (e) => {
+  const xToTime = (e) => {
     const rect = canvas.getBoundingClientRect();
-    const f = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-    return f * dur();
+    return Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width)) * dur();
+  };
+  const scrub = (t) => {
+    if (i !== currentIndex) return; // preview seek only for the playing track
+    playCur = t;
+    send({ type: 'seek', time: t });
+    drawWave(canvas, tr, true);
   };
   canvas.addEventListener('pointerdown', (e) => {
-    if (!dur()) return;
-    const t = timeAt(e), s = tr.start || 0, en = tr.end > 0 ? tr.end : dur();
-    dragH = Math.abs(t - s) <= Math.abs(t - en) ? 'start' : 'end';
+    const d = dur();
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const sx = d ? (tr.start || 0) / d * rect.width : 0;
+    const ex = d ? (tr.end > 0 ? tr.end : d) / d * rect.width : rect.width;
+    if (d && Math.abs(x - sx) <= HANDLE_PX) mode = 'start';
+    else if (d && Math.abs(x - ex) <= HANDLE_PX) mode = 'end';
+    else mode = 'seek';
     canvas.setPointerCapture(e.pointerId); e.preventDefault();
+    if (mode === 'seek') scrub(xToTime(e));
   });
   canvas.addEventListener('pointermove', (e) => {
-    if (!dragH) return;
-    const t = timeAt(e);
-    if (dragH === 'start') tr.start = Math.max(0, Math.min(t, (tr.end > 0 ? tr.end : dur()) - 0.5));
-    else tr.end = Math.min(dur(), Math.max(t, (tr.start || 0) + 0.5));
+    if (!mode) return;
+    const t = xToTime(e);
+    if (mode === 'start') { tr.start = Math.max(0, Math.min(t, (tr.end > 0 ? tr.end : dur()) - 0.5)); }
+    else if (mode === 'end') { tr.end = Math.min(dur(), Math.max(t, (tr.start || 0) + 0.5)); }
+    else { scrub(t); return; }
     drawWave(canvas, tr, i === currentIndex);
     sIn.value = fmtTime(Math.floor(tr.start || 0));
     eIn.value = tr.end > 0 ? fmtTime(Math.floor(tr.end)) : '';
   });
-  const endDrag = () => { if (dragH) { dragH = null; commitTrim(tr, i, true); } };
+  const endDrag = (e) => {
+    if (!mode) return;
+    if (mode === 'seek') {
+      const t = xToTime(e);
+      if (i === currentIndex) scrub(t);
+      else playIndex(i, t); // start a stopped track from the clicked point
+    } else {
+      commitTrim(tr, i, true);
+    }
+    mode = null;
+  };
   canvas.addEventListener('pointerup', endDrag);
-  canvas.addEventListener('pointercancel', endDrag);
+  canvas.addEventListener('pointercancel', () => { mode = null; });
 }
 let padCrossfadeMs = 0;      // crossfade duration for pad triggers
 let capturingFor = -1;      // index of the track awaiting a hotkey, or -1
@@ -477,7 +502,7 @@ function addInterlude() {
   savePlaylistState();
 }
 
-function playIndex(i) {
+function playIndex(i, fromTime) {
   if (i < 0 || i >= playlist.length) return;
   clearGap();
   const tr = playlist[i];
@@ -492,7 +517,9 @@ function playIndex(i) {
     playInterlude(tr);
     return;
   }
-  send({ type: tr.isVideo ? 'playVideoTrack' : 'playTrack', path: tr.path, start: tr.start || 0, end: tr.end || 0 });
+  // fromTime (set by clicking the waveform) overrides the trim start for this run.
+  const startAt = (fromTime != null) ? Math.max(0, fromTime) : (tr.start || 0);
+  send({ type: tr.isVideo ? 'playVideoTrack' : 'playTrack', path: tr.path, start: startAt, end: tr.end || 0 });
   startCues(tr);
   renderPlaylist();
 }
@@ -783,7 +810,7 @@ function renderPlaylist() {
           '<span class="tt-tot" title="Durata totale">⏱ ' + fmtTime(Math.floor(total)) + '</span>' +
           '<span class="tt-rem" title="Rimasto">⧗ -' + fmtTime(Math.ceil(remaining)) + '</span>' +
         '</div>' +
-        '<canvas class="wave" width="' + WAVE_BUCKETS + '" height="46"></canvas>' +
+        '<canvas class="wave" width="' + WAVE_BUCKETS + '" height="46" title="Clic/trascina = sposta il punto di riproduzione · maniglie verde/rossa = inizio/fine"></canvas>' +
         '<div class="track-trim">' +
           '<span class="trim-lbl trim-lbl-s">Inizio</span>' +
           '<input class="trim-start" type="text" value="' + fmtTime(Math.floor(tStart)) + '" title="Punto di inizio (mm:ss)" />' +

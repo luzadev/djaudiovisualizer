@@ -359,6 +359,14 @@ djv.onControl(async (m) => {
       } catch (e) { djv.report({ type: 'error', message: e.message }); }
       break;
     case 'setTrim': audio.setTrim(m.start || 0, m.end || 0); break;
+    case 'seek': {
+      const el = audio.mediaEl;
+      if (el && isFinite(el.duration) && el.duration > 0) {
+        el.currentTime = Math.max(0, Math.min(el.duration - 0.05, m.time || 0));
+        audio._trimFired = false; // re-arm the trim-end check after seeking
+      }
+      break;
+    }
     case 'probeDurations': probeDurations(m.paths || []); break;
     case 'togglePlay': {
       const playing = audio.togglePlay();
