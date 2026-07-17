@@ -1105,7 +1105,9 @@ function stopRecTimer() { if (recTimer) { clearInterval(recTimer); recTimer = nu
 
 $('#btn-rec').addEventListener('click', () => {
   if (!recOn) {
-    send({ type: 'recStart' });
+    // Pass format + optional max duration so the output can auto-stop (Reel mode).
+    const [w, h] = $('#rec-aspect').value.split('x').map(Number);
+    send({ type: 'recStart', w, h, maxMs: parseInt($('#rec-dur').value, 10) || 0 });
   } else {
     const [w, h] = $('#rec-aspect').value.split('x').map(Number);
     send({ type: 'recStop', w, h });
