@@ -16,6 +16,10 @@ function applyEffect(effect) {
   renderLibrary();
 }
 
+// Auto VJ: the output-side director picks presets in time with the music.
+let autoVjOn = false;
+$('#auto-vj').addEventListener('click', () => send({ type: 'autoVj', on: !autoVjOn }));
+
 // --- Library browser (hundreds of presets, filterable) ---
 const familySel = $('#effect-family');
 EFFECTS.families.forEach((name, i) => {
@@ -1322,6 +1326,14 @@ window.addEventListener('keydown', (e) => {
 // ---------------------------------------------------------------- reports in
 djv.onReport((m) => {
   switch (m.type) {
+    case 'autoVj':
+      autoVjOn = !!m.on;
+      $('#auto-vj').classList.toggle('vj-on', autoVjOn);
+      $('#auto-vj').textContent = autoVjOn ? '🤖 Auto VJ ●' : '🤖 Auto VJ';
+      if (autoVjOn && m.name) {
+        $('#scene-name').textContent = m.name + (m.bpm ? ' · ' + m.bpm + ' BPM' : '');
+      }
+      break;
     case 'devices': {
       const sel = $('#device-select');
       const cur = sel.value;
