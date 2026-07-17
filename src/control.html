@@ -109,9 +109,15 @@
         <label>Libreria effetti <span id="effects-count"></span></label>
         <div class="row">
           <button id="auto-vj" title="L'Auto VJ ascolta il brano (energia, BPM, drop) e cambia effetto da solo a tempo di musica">🤖 Auto VJ</button>
+          <select id="av-mode" title="Da quali famiglie pesca l'Auto VJ">
+            <option value="smart">🎩 Smart (segue il mood)</option>
+            <option value="all">🌐 Tutte le famiglie</option>
+            <option value="custom">🎯 Solo famiglie scelte…</option>
+          </select>
           <select id="effect-family"><option value="-1">Tutte le famiglie</option></select>
           <input type="text" id="effect-search" class="textfield" placeholder="Cerca effetto…" />
         </div>
+        <div id="av-fams" class="av-fams hidden"></div>
         <div id="effect-list" class="effect-list"></div>
       </section>
 

@@ -17,8 +17,42 @@ function applyEffect(effect) {
 }
 
 // Auto VJ: the output-side director picks presets in time with the music.
+// avMode: 'smart' = curated mood pools, 'all' = every family, 'custom' = the
+// user's checklist. Persisted in localStorage.
 let autoVjOn = false;
-$('#auto-vj').addEventListener('click', () => send({ type: 'autoVj', on: !autoVjOn }));
+let avCfg = { mode: 'smart', families: [] };
+try { avCfg = Object.assign(avCfg, JSON.parse(localStorage.getItem('autovj') || '{}')); } catch (e) {}
+
+function avSend(on) { send({ type: 'autoVj', on, mode: avCfg.mode, families: avCfg.families }); }
+function avSave() {
+  localStorage.setItem('autovj', JSON.stringify(avCfg));
+  if (autoVjOn) avSend(true); // re-push the new config while running
+}
+function renderAvFams() {
+  const box = $('#av-fams');
+  box.classList.toggle('hidden', avCfg.mode !== 'custom');
+  if (avCfg.mode !== 'custom') return;
+  box.innerHTML = '';
+  EFFECTS.families.forEach((name) => {
+    const l = document.createElement('label');
+    l.className = 'av-fam' + (avCfg.families.includes(name) ? ' on' : '');
+    const c = document.createElement('input');
+    c.type = 'checkbox'; c.checked = avCfg.families.includes(name);
+    c.addEventListener('change', () => {
+      avCfg.families = c.checked
+        ? avCfg.families.concat(name)
+        : avCfg.families.filter((f) => f !== name);
+      l.classList.toggle('on', c.checked);
+      avSave();
+    });
+    l.appendChild(c); l.appendChild(document.createTextNode(' ' + name));
+    box.appendChild(l);
+  });
+}
+$('#av-mode').value = avCfg.mode;
+$('#av-mode').addEventListener('change', (e) => { avCfg.mode = e.target.value; renderAvFams(); avSave(); });
+renderAvFams();
+$('#auto-vj').addEventListener('click', () => avSend(!autoVjOn));
 
 // --- Library browser (hundreds of presets, filterable) ---
 const familySel = $('#effect-family');

@@ -799,3 +799,8 @@ kbd {
 
 /* Auto VJ toggle */
 #auto-vj.vj-on { background: #2e7d32; border-color: #4caf50; color: #fff; }
+.av-fams { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 10px; }
+.av-fams.hidden { display: none; }
+.av-fam { font-size: 11px; padding: 4px 8px; border: 1px solid #444; border-radius: 8px; cursor: pointer; opacity: .75; }
+.av-fam.on { border-color: #4caf50; background: rgba(76,175,80,.15); opacity: 1; }
+.av-fam input { display: none; }
