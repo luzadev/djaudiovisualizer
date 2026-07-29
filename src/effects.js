@@ -54,10 +54,20 @@ const FAMILIES = [
   { name: 'Tunnel Neon', scale: 1.0 },
   { name: 'Tempesta Plasma', scale: 1.0 },
   { name: 'Supernova', scale: 1.0 },
-  // Camera-interactive family (interactive.js): webcam motion pushes physical
-  // balls around the screen. Excluded from Auto VJ (turning the camera on must
-  // stay a deliberate user choice).
-  { name: 'Interattivo Palle', scale: 1.0, interactive: true }
+  // Camera-interactive families (interactive.js): webcam motion drives the
+  // scene (interMode picks the behaviour). Excluded from Auto VJ (turning the
+  // camera on must stay a deliberate user choice). Append-only.
+  { name: 'Interattivo Palle', scale: 1.0, interactive: true },
+  { name: 'Interattivo Bolle', scale: 1.0, interactive: true, interMode: 'bubbles' },
+  { name: 'Interattivo Palloncini', scale: 1.0, interactive: true, interMode: 'balloons' },
+  { name: 'Interattivo Specchio', scale: 1.0, interactive: true, interMode: 'mirror' },
+  { name: 'Interattivo Tessuto', scale: 1.0, interactive: true, interMode: 'cloth' },
+  { name: 'Interattivo Pittura', scale: 1.0, interactive: true, interMode: 'paint' },
+  { name: 'Interattivo Fluido', scale: 1.0, interactive: true, interMode: 'fluid' },
+  { name: 'Interattivo Silhouette', scale: 1.0, interactive: true, interMode: 'silhouette' },
+  { name: 'Interattivo Sciame', scale: 1.0, interactive: true, interMode: 'swarm' },
+  { name: 'Interattivo Piastrelle', scale: 1.0, interactive: true, interMode: 'tiles' },
+  { name: 'Interattivo Firewall', scale: 1.0, interactive: true, interMode: 'firewall' }
 ];
 
 // Palettes: low colour (a) -> high colour (b), plus optional hue-cycle/sat.
@@ -117,7 +127,8 @@ function makeEffect(fi, pi, vi) {
     // setEffect can't leave a stale flag behind when switching presets.
     isFluid: fam.fluid ? 1 : 0,
     fluidMode: fam.fluidMode || 'ink',
-    isInteractive: fam.interactive ? 1 : 0
+    isInteractive: fam.interactive ? 1 : 0,
+    interactiveMode: fam.interMode || 'balls'
   };
 }
 

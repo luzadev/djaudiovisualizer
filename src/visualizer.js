@@ -90,6 +90,9 @@ class Visualizer {
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source);
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+    // Also kept for the interactive "mirror" mode, whose particles reform
+    // the custom image instead of the default wordmark.
+    this.customSource = source;
   }
 
   render(timeSec, audio) {
@@ -98,6 +101,7 @@ class Visualizer {
     if (this.inter && !e.isInteractive) this.inter.suspend();
     if (e.isInteractive && window.InteractiveSim) {
       if (!this.inter) this.inter = new window.InteractiveSim(gl);
+      this.inter.customSource = this.customSource || null;
       this.inter.render(timeSec, audio, e, this.canvas);
       return;
     }

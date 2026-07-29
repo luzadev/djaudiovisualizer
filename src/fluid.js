@@ -279,6 +279,30 @@ class FluidSim {
         this._splat(0.06, 0.5 + 0.3 * Math.sin(t * 5.3), 1000 * (0.4 + bass), 0,
           c[0] * 0.5, c[1] * 0.5, c[2] * 0.5, 0.0018);
       }
+    } else if (mode === 'touch') {
+      // Camera-interactive (InteractiveSim): splats come from detected motion,
+      // pushed along the direction the person is moving; a faint idle plume
+      // keeps the screen alive when nobody moves.
+      const list = this.extSplats || [];
+      const FT = (300 + 420 * bass) * dt * 60;
+      for (const s of list) {
+        const c = dyeCol(s.ph);
+        const k = Math.min(1, s.k * 1.8);
+        this._splat(s.x, s.y, s.dx * FT * (0.6 + k), s.dy * FT * (0.6 + k),
+          c[0] * inj * 9.0 * k, c[1] * inj * 9.0 * k, c[2] * inj * 9.0 * k,
+          0.004 + 0.004 * k);
+      }
+      this.extSplats = null;
+      if (!list.length) {
+        const c = dyeCol(0.2);
+        const x = 0.5 + 0.25 * Math.sin(t * 0.35);
+        this._splat(x, 0.35, Math.sin(t * 0.9) * force * 0.3, force * 0.22,
+          c[0] * inj * 1.2, c[1] * inj * 1.2, c[2] * inj * 1.2, rad * 1.2);
+      }
+      if (onBeat) {
+        const c = dyeCol(0.6);
+        this._splat(0.5, 0.5, 0, 0, c[0] * 0.3, c[1] * 0.3, c[2] * 0.3, 0.004);
+      }
     } else {
       // 'ink': wandering brushes (the original mode)
       for (let i = 0; i < this.emitters.length; i++) {
