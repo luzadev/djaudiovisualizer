@@ -496,10 +496,13 @@ function avPick(mood) {
   if (avMode === 'smart') fams = AV_POOLS[mood] || AV_POOLS.groove;
   else if (avMode === 'custom' && avFamilies.length) fams = avFamilies;
   const speedOk = (e) => (mood === 'peak' ? e.speed >= 1.0 : e.speed <= 1.4);
-  let cands = window.EFFECTS.list.filter(e => (!fams || fams.indexOf(e.familyName) >= 0) &&
+  // Interactive presets are excluded: the Auto VJ must never switch the
+  // camera on by itself.
+  let cands = window.EFFECTS.list.filter(e => !e.isInteractive &&
+    (!fams || fams.indexOf(e.familyName) >= 0) &&
     speedOk(e) && avRecent.indexOf(e.name) < 0);
   // A tight custom list can exhaust the speed filter: retry without it.
-  if (!cands.length) cands = window.EFFECTS.list.filter(e =>
+  if (!cands.length) cands = window.EFFECTS.list.filter(e => !e.isInteractive &&
     (!fams || fams.indexOf(e.familyName) >= 0) && avRecent.indexOf(e.name) < 0);
   const e = cands.length ? cands[Math.floor(Math.random() * cands.length)] : window.EFFECTS.list[0];
   avRecent = [e.name].concat(avRecent).slice(0, 6); // don't repeat the last few
@@ -517,12 +520,21 @@ function avTick(now) {
   djv.report({ type: 'autoVj', on: true, name: e.name, mood, bpm: audio.bpm || 0 });
 }
 
+let camErrReported = false;
 function frame() {
   const t = (performance.now() - startTime) / 1000;
   audio.update();
   const a = audio.values;
   avTick(performance.now());
   viz.render(t * speed, a);
+
+  // Interactive family: tell the control panel if the camera didn't start
+  // (permission denied / missing device). Mouse interaction still works.
+  if (viz.inter && viz.inter.camState === 'error' && !camErrReported) {
+    camErrReported = true;
+    djv.report({ type: 'error', message: 'Camera non disponibile (' + viz.inter.camErr +
+      ') — l’effetto Interattivo funziona comunque con il mouse sull’output' });
+  }
 
   // Report beat rising-edges so the control window can auto-cycle effects.
   if (a.beat > 0.6 && prevBeat <= 0.6) djv.report({ type: 'beat' });

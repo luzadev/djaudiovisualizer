@@ -36,5 +36,7 @@ contextBridge.exposeInMainWorld('djv', {
   exportPlaylist: (data) => ipcRenderer.invoke('playlist:export', data),
   importPlaylist: () => ipcRenderer.invoke('playlist:import'),
   peaks: (path, buckets) => ipcRenderer.invoke('audio:peaks', path, buckets),
+  // Ask macOS for camera permission (interactive family) right before use.
+  camAccess: () => ipcRenderer.invoke('cam:ensure'),
   readFile: (path) => ipcRenderer.invoke('file:read', path)
 });

@@ -53,7 +53,11 @@ const FAMILIES = [
   { name: 'Griglia Neon', scale: 1.0 },
   { name: 'Tunnel Neon', scale: 1.0 },
   { name: 'Tempesta Plasma', scale: 1.0 },
-  { name: 'Supernova', scale: 1.0 }
+  { name: 'Supernova', scale: 1.0 },
+  // Camera-interactive family (interactive.js): webcam motion pushes physical
+  // balls around the screen. Excluded from Auto VJ (turning the camera on must
+  // stay a deliberate user choice).
+  { name: 'Interattivo Palle', scale: 1.0, interactive: true }
 ];
 
 // Palettes: low colour (a) -> high colour (b), plus optional hue-cycle/sat.
@@ -112,7 +116,8 @@ function makeEffect(fi, pi, vi) {
     // Always present (0/1 and a mode string) so Object.assign merges in
     // setEffect can't leave a stale flag behind when switching presets.
     isFluid: fam.fluid ? 1 : 0,
-    fluidMode: fam.fluidMode || 'ink'
+    fluidMode: fam.fluidMode || 'ink',
+    isInteractive: fam.interactive ? 1 : 0
   };
 }
 

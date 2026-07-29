@@ -75,6 +75,17 @@ async function ensureMicAccess() {
   } catch (e) { /* getUserMedia will prompt again if needed */ }
 }
 
+// Camera permission is requested lazily (only when an interactive preset is
+// activated), not at startup: no camera prompt for users who never use it.
+ipcMain.handle('cam:ensure', async () => {
+  if (process.platform !== 'darwin') return true;
+  try {
+    const status = systemPreferences.getMediaAccessStatus('camera');
+    if (status !== 'granted') return await systemPreferences.askForMediaAccess('camera');
+    return true;
+  } catch (e) { return true; }
+});
+
 app.whenReady().then(async () => {
   if (process.platform === 'darwin' && app.dock) {
     try { app.dock.setIcon(path.join(__dirname, 'build', 'icon_1024.png')); } catch (e) { /* non-fatal */ }

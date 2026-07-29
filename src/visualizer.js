@@ -94,6 +94,13 @@ class Visualizer {
 
   render(timeSec, audio) {
     const gl = this.gl, u = this.u, e = this.effect;
+    // Release the camera as soon as a non-interactive preset takes over.
+    if (this.inter && !e.isInteractive) this.inter.suspend();
+    if (e.isInteractive && window.InteractiveSim) {
+      if (!this.inter) this.inter = new window.InteractiveSim(gl);
+      this.inter.render(timeSec, audio, e, this.canvas);
+      return;
+    }
     if (e.isFluid && window.FluidSim) {
       if (!this.fluid) this.fluid = new window.FluidSim(gl);
       this.fluid.render(timeSec, audio, e, this.canvas);
