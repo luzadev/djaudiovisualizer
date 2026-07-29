@@ -11,6 +11,51 @@ function externalDisplay() {
   return screen.getAllDisplays().find(d => d.id !== primary.id) || primary;
 }
 
+let quitting = false;
+
+function createOutputWindow() {
+  const primary = screen.getPrimaryDisplay();
+  const ext = externalDisplay();
+  const hasExternal = ext.id !== primary.id;
+
+  outputWin = new BrowserWindow({
+    width: hasExternal ? ext.bounds.width : 960,
+    height: hasExternal ? ext.bounds.height : 600,
+    x: hasExternal ? ext.bounds.x : primary.bounds.x + 520,
+    y: hasExternal ? ext.bounds.y : primary.bounds.y + 60,
+    title: 'DJ Visualizer — Output',
+    backgroundColor: '#000000',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      additionalArguments: ['--role=output'],
+      // Let audio loaded via IPC play without a click inside the output window.
+      autoplayPolicy: 'no-user-gesture-required'
+    }
+  });
+  outputWin.loadFile(path.join(__dirname, 'src', 'output.html'));
+  if (hasExternal) {
+    outputWin.once('ready-to-show', () => placeOutputOnDisplay(ext, true));
+  }
+
+  // The output window hosts the audio engine and all visual state: closing it
+  // by accident (Cmd+W, red button) would kill the show. Ignore close requests
+  // while the control panel is open; only app quit may close it.
+  outputWin.on('close', (e) => {
+    if (!quitting && controlWin && !controlWin.isDestroyed()) e.preventDefault();
+  });
+  // Safety net: if it dies anyway (e.g. a renderer crash), bring it back.
+  outputWin.on('closed', () => {
+    outputWin = null;
+    if (!quitting && controlWin && !controlWin.isDestroyed()) createOutputWindow();
+  });
+  outputWin.webContents.on('render-process-gone', () => {
+    if (quitting) return;
+    if (outputWin && !outputWin.isDestroyed()) outputWin.destroy();
+  });
+}
+
 function createWindows() {
   const primary = screen.getPrimaryDisplay();
   const ext = externalDisplay();
@@ -38,33 +83,14 @@ function createWindows() {
   controlWin.loadFile(path.join(__dirname, 'src', 'control.html'));
 
   // --- Output window (the visuals) ---
-  outputWin = new BrowserWindow({
-    width: hasExternal ? ext.bounds.width : 960,
-    height: hasExternal ? ext.bounds.height : 600,
-    x: hasExternal ? ext.bounds.x : primary.bounds.x + 520,
-    y: hasExternal ? ext.bounds.y : primary.bounds.y + 60,
-    title: 'DJ Visualizer — Output',
-    backgroundColor: '#000000',
-    webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
-      contextIsolation: true,
-      nodeIntegration: false,
-      additionalArguments: ['--role=output'],
-      // Let audio loaded via IPC play without a click inside the output window.
-      autoplayPolicy: 'no-user-gesture-required'
-    }
-  });
-  outputWin.loadFile(path.join(__dirname, 'src', 'output.html'));
-  if (hasExternal) {
-    outputWin.once('ready-to-show', () => placeOutputOnDisplay(ext, true));
-  }
+  createOutputWindow();
 
   controlWin.on('closed', () => {
+    quitting = true; // closing the panel ends the show: let the output close
     controlWin = null;
     if (outputWin) outputWin.close();
     app.quit();
   });
-  outputWin.on('closed', () => { outputWin = null; });
 }
 
 async function ensureMicAccess() {
@@ -85,6 +111,8 @@ ipcMain.handle('cam:ensure', async () => {
     return true;
   } catch (e) { return true; }
 });
+
+app.on('before-quit', () => { quitting = true; });
 
 app.whenReady().then(async () => {
   if (process.platform === 'darwin' && app.dock) {
