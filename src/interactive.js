@@ -343,7 +343,7 @@ class InteractiveSim {
     let raw = null;
     try { raw = this.pose.detect(v, nowMs); } catch (e) { return; }
     if (!raw) {
-      if (++this._bodyMiss > 15) { this.body = null; this.lms = null; }
+      if (++this._bodyMiss > 15) { this.body = null; this.lms = null; this.lmsRaw = null; this._lmsS = null; }
       return;
     }
     this._bodyMiss = 0;
@@ -352,6 +352,14 @@ class InteractiveSim {
       vis: l.visibility !== undefined ? l.visibility : 1 });
     const lms = raw.map(map);
     this.lms = lms;
+    // Mirrored raw landmarks with depth, smoothed — the avatar's skeleton.
+    const rawM = raw.map(l => ({ x: 1 - l.x, y: l.y, z: l.z || 0,
+      vis: l.visibility !== undefined ? l.visibility : 1 }));
+    if (!this._lmsS) this._lmsS = rawM;
+    else this._lmsS = this._lmsS.map((p, i) => ({
+      x: p.x + (rawM[i].x - p.x)*0.5, y: p.y + (rawM[i].y - p.y)*0.5,
+      z: p.z + (rawM[i].z - p.z)*0.4, vis: rawM[i].vis }));
+    this.lmsRaw = this._lmsS;
     const KEYS = { head: 0, handL: 16, handR: 15, footL: 28, footR: 27 }; // mirrored L/R
     if (!this.body) this.body = {};
     for (const k in KEYS) {
@@ -1014,6 +1022,61 @@ class InteractiveSim {
     this.prevBeat = audio.beat || 0;
 
     if (mode === 'fluid') { this._stepFluid(timeSec, audio, e, canvas); return; }
+
+    // ---- Robot avatar: a robot built from 3D parts whose limbs follow your
+    // tracked skeleton 1:1 — raise your arm and the robot raises its arm.
+    if (mode === 'avatar') {
+      const L = this.lmsRaw;
+      const ok = this.modelSim && L && L[11] && L[11].vis > 0.5 && L[12].vis > 0.5
+        && L[23].vis > 0.4 && L[24].vis > 0.4;
+      if (!ok) { this._drawField(7, e, audio, canvas, 0); return; }
+      const S = 2.6;
+      const W = (i) => [(L[i].x - 0.5)*S, (0.5 - L[i].y)*S, -(L[i].z || 0)*1.2];
+      const mid = (p, q) => [(p[0]+q[0])/2, (p[1]+q[1])/2, (p[2]+q[2])/2];
+      const sh1 = W(11), sh2 = W(12), hp1 = W(23), hp2 = W(24);
+      const neck = mid(sh1, sh2), pelvis = mid(hp1, hp2);
+      const shw = Math.max(0.15, Math.hypot(sh1[0]-sh2[0], sh1[1]-sh2[1], sh1[2]-sh2[2]));
+      const t = shw;
+      const metal = [0.60, 0.64, 0.72], dark = [0.28, 0.30, 0.36];
+      const acc = e.colorB || [0.2, 1, 1];
+      const parts = [];
+      const limb = (a, b, r, col) => parts.push({ a, b, rx: r, rz: r, kind: 'cube', col });
+      const ball = (a, r, col) => parts.push({ a, b: null, rx: r, kind: 'sphere', col });
+      // torso + chest light
+      parts.push({ a: neck, b: pelvis, rx: shw*0.52, rz: shw*0.28, kind: 'cube', col: metal });
+      ball(mid(neck, mid(neck, pelvis)), t*0.10, acc);
+      // head with visor + antenna
+      const nose = L[0].vis > 0.4 ? W(0) : [neck[0], neck[1]+t*0.55, neck[2]];
+      const headC = [nose[0], nose[1] + t*0.05, nose[2]];
+      parts.push({ a: headC, b: null, rx: t*0.34, ry: t*0.38, rz: t*0.30, kind: 'cube', col: metal });
+      parts.push({ a: [headC[0], headC[1]+t*0.02, headC[2]+t*0.30], b: null,
+        rx: t*0.24, ry: t*0.08, rz: t*0.06, kind: 'cube', col: acc });
+      ball([headC[0], headC[1]+t*0.52, headC[2]], t*0.07, acc);
+      // arms (shoulder->elbow->wrist), glowing hands
+      const arm = (s, elI, wrI) => {
+        if (L[elI].vis < 0.4 || L[wrI].vis < 0.4) return;
+        const el = W(elI), wr = W(wrI);
+        limb(s, el, t*0.14, metal);
+        limb(el, wr, t*0.12, metal);
+        ball(el, t*0.15, dark);
+        ball(wr, t*0.17, acc);
+      };
+      arm(sh1, 13, 15); arm(sh2, 14, 16);
+      ball(sh1, t*0.16, dark); ball(sh2, t*0.16, dark);
+      // legs with feet
+      const leg = (h, knI, anI) => {
+        if (L[knI].vis < 0.4 || L[anI].vis < 0.4) return;
+        const kn = W(knI), an = W(anI);
+        limb(h, kn, t*0.16, metal);
+        limb(kn, an, t*0.13, metal);
+        ball(kn, t*0.16, dark);
+        parts.push({ a: [an[0], an[1]-t*0.06, an[2]+t*0.12], b: null,
+          rx: t*0.14, ry: t*0.08, rz: t*0.22, kind: 'cube', col: dark });
+      };
+      leg(hp1, 25, 27); leg(hp2, 26, 28);
+      this.modelSim.renderAvatar(timeSec, audio, e, canvas, parts);
+      return;
+    }
 
     // ---- 3D model puppet: swipe to spin (with inertia), the model leans
     // toward where you move, big motion makes it hop with squash & stretch.

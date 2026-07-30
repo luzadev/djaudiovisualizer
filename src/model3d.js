@@ -358,6 +358,137 @@ class ModelSim {
     }
   }
 
+  // ---------------------------------------------------- avatar primitives
+  _primMesh(pos, nrm, idx) {
+    const gl = this.gl;
+    const mk = (d, target) => {
+      const b = gl.createBuffer();
+      gl.bindBuffer(target, b);
+      gl.bufferData(target, d, gl.STATIC_DRAW);
+      return b;
+    };
+    return { vboP: mk(new Float32Array(pos), gl.ARRAY_BUFFER),
+      vboN: mk(new Float32Array(nrm), gl.ARRAY_BUFFER),
+      vboU: mk(new Float32Array(pos.length/3*2), gl.ARRAY_BUFFER),
+      ibo: mk(new Uint16Array(idx), gl.ELEMENT_ARRAY_BUFFER),
+      count: idx.length, idxType: 5123 };
+  }
+
+  _ensurePrims() {
+    if (this.prims) return;
+    // unit cube (±1) with face normals
+    const P = [], N = [], I = [];
+    const faces = [[[1,0,0],[0,1,0],[0,0,1]], [[-1,0,0],[0,0,1],[0,1,0]],
+      [[0,1,0],[0,0,1],[1,0,0]], [[0,-1,0],[1,0,0],[0,0,1]],
+      [[0,0,1],[1,0,0],[0,1,0]], [[0,0,-1],[0,1,0],[1,0,0]]];
+    faces.forEach(([n, u, v]) => {
+      const b = P.length/3;
+      for (const [su, sv] of [[-1,-1],[1,-1],[1,1],[-1,1]]) {
+        P.push(n[0]+u[0]*su+v[0]*sv, n[1]+u[1]*su+v[1]*sv, n[2]+u[2]*su+v[2]*sv);
+        N.push(n[0], n[1], n[2]);
+      }
+      I.push(b, b+1, b+2, b, b+2, b+3);
+    });
+    const cube = this._primMesh(P, N, I);
+    // unit sphere
+    const SP = [], SN = [], SI = [], ST = 12, SE = 18;
+    for (let i = 0; i <= ST; i++) {
+      const ph = i/ST*Math.PI, y = Math.cos(ph), r = Math.sin(ph);
+      for (let j = 0; j <= SE; j++) {
+        const th = j/SE*Math.PI*2;
+        const x = r*Math.cos(th), z = r*Math.sin(th);
+        SP.push(x, y, z); SN.push(x, y, z);
+        if (i < ST && j < SE) {
+          const a = i*(SE+1)+j;
+          SI.push(a, a+SE+1, a+1, a+1, a+SE+1, a+SE+2);
+        }
+      }
+    }
+    this.prims = { cube, sphere: this._primMesh(SP, SN, SI) };
+  }
+
+  // Matrix placing a unit primitive as a limb from a to b (thickness rx/rz)
+  // or as a sphere/box at a (b = null).
+  _partMatrix(spec) {
+    if (!spec.b) return m4mul(m4trans(spec.a), m4scale3(spec.rx, spec.ry || spec.rx, spec.rz || spec.rx));
+    const dx = spec.b[0]-spec.a[0], dy = spec.b[1]-spec.a[1], dz = spec.b[2]-spec.a[2];
+    const len = Math.max(1e-4, Math.hypot(dx, dy, dz));
+    const yx = dx/len, yy = dy/len, yz = dz/len;
+    // basis around the limb axis
+    let ax = 0, ay = 0, az = 1;
+    if (Math.abs(yz) > 0.9) { ax = 1; az = 0; }
+    let xx = yy*az - yz*ay, xy = yz*ax - yx*az, xz = yx*ay - yy*ax;
+    const xl = Math.hypot(xx, xy, xz) || 1; xx/=xl; xy/=xl; xz/=xl;
+    const zx = xy*yz - xz*yy, zy = xz*yx - xx*yz, zz = xx*yy - xy*yx;
+    const R = new Float32Array([xx,xy,xz,0, yx,yy,yz,0, zx,zy,zz,0,
+      (spec.a[0]+spec.b[0])/2, (spec.a[1]+spec.b[1])/2, (spec.a[2]+spec.b[2])/2, 1]);
+    return m4mul(R, m4scale3(spec.rx, len/2, spec.rz || spec.rx));
+  }
+
+  // Render a robot avatar made of primitive parts driven by the body pose.
+  // parts: [{ a:[x,y,z], b:[x,y,z]|null, rx, ry?, rz?, kind:'cube'|'sphere', col:[r,g,b] }]
+  renderAvatar(timeSec, audio, e, canvas, parts) {
+    const gl = this.gl;
+    this._ensurePrims();
+    const mix = e.audioMix !== undefined ? e.audioMix : 1;
+    const bass = (audio.bass || 0)*mix, beat = (audio.beat || 0)*mix;
+    const ca = e.colorA || [0.05, 0, 0.2], cb = e.colorB || [0.2, 1, 1];
+
+    gl.viewport(0, 0, canvas.width, canvas.height);
+    gl.disable(gl.BLEND);
+    gl.clearColor(0, 0, 0, 1);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+    gl.useProgram(this.progBg);
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.quad);
+    gl.enableVertexAttribArray(this.aBg);
+    gl.vertexAttribPointer(this.aBg, 2, gl.FLOAT, false, 0, 0);
+    gl.uniform3fv(this.ub.uColA, ca);
+    gl.uniform3fv(this.ub.uColB, cb);
+    gl.uniform2f(this.ub.uRes, canvas.width, canvas.height);
+    gl.uniform1f(this.ub.uT, timeSec);
+    gl.uniform1f(this.ub.uBass, bass);
+    gl.uniform1f(this.ub.uBeat, beat);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+    const asp = canvas.width/Math.max(1, canvas.height);
+    const eye = [0, 0.1, 3.4];
+    const proj = m4persp(0.72, asp, 0.1, 20);
+    const view = m4lookAt(eye, [0, 0, 0]);
+    gl.enable(gl.DEPTH_TEST);
+    gl.depthFunc(gl.LEQUAL);
+    gl.useProgram(this.progMesh);
+    gl.uniformMatrix4fv(this.um.uProj, false, proj);
+    gl.uniformMatrix4fv(this.um.uView, false, view);
+    gl.uniform1f(this.um.uPulse, 0);
+    gl.uniform3fv(this.um.uColA, ca);
+    gl.uniform3fv(this.um.uColB, cb);
+    gl.uniform3fv(this.um.uCam, eye);
+    gl.uniform1f(this.um.uBeat, beat);
+    gl.uniform1f(this.um.uLevel, (audio.level || 0)*mix);
+    gl.uniform1f(this.um.uTreble, (audio.treble || 0)*mix);
+    gl.uniform1f(this.um.uRim, 0.15 + 0.3*beat);
+    gl.uniform1i(this.um.uHasTex, 0);
+    for (const spec of parts) {
+      const m = this.prims[spec.kind === 'sphere' ? 'sphere' : 'cube'];
+      gl.uniformMatrix4fv(this.um.uModel, false, this._partMatrix(spec));
+      gl.uniform3fv(this.um.uBase, spec.col);
+      const bind = (buf, loc, n) => {
+        gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+        gl.enableVertexAttribArray(loc);
+        gl.vertexAttribPointer(loc, n, gl.FLOAT, false, 0, 0);
+      };
+      bind(m.vboP, this.aMesh.pos, 3);
+      bind(m.vboN, this.aMesh.nrm, 3);
+      bind(m.vboU, this.aMesh.uv, 2);
+      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, m.ibo);
+      gl.drawElements(gl.TRIANGLES, m.count, gl.UNSIGNED_SHORT, 0);
+    }
+    gl.disable(gl.DEPTH_TEST);
+    gl.disableVertexAttribArray(this.aMesh.nrm);
+    gl.disableVertexAttribArray(this.aMesh.uv);
+  }
+
   // pose (optional, from the camera-interactive mode): { yaw, leanX, hopY,
   // squash, rim } — extra rotation, sideways lean, jump height (in radii),
   // vertical squash & stretch, touch-glow 0..1.

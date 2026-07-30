@@ -79,7 +79,10 @@ const FAMILIES = [
   { name: 'Modello 3D', scale: 1.0, model3d: true },
   // Camera-interactive puppet: swipe to spin the model, it leans toward your
   // movement and hops when you get agitated. Excluded from Auto VJ.
-  { name: 'Interattivo Modello', scale: 1.0, interactive: true, interMode: 'model' }
+  { name: 'Interattivo Modello', scale: 1.0, interactive: true, interMode: 'model' },
+  // Robot avatar: a robot made of 3D parts whose limbs mirror the tracked
+  // body 1:1 (needs the pose tracker; shows motion mist without it).
+  { name: 'Interattivo Avatar', scale: 1.0, interactive: true, interMode: 'avatar' }
 ];
 
 // Palettes: low colour (a) -> high colour (b), plus optional hue-cycle/sat.
