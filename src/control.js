@@ -669,6 +669,12 @@ function moveTrack(from, to) {
 }
 
 let dragFrom = -1;
+let cueDragging = false;      // a scene-editor element is being dragged
+let plDirty = false;          // a re-render was requested mid-drag
+let dragMarkEl = null, dragMarkBelow = false;
+function clearDropMarks() {
+  if (dragMarkEl) { dragMarkEl.classList.remove('drop-above', 'drop-below'); dragMarkEl = null; }
+}
 
 // Build the <option> list of effect families for a cue's effect picker.
 function cueFamilyOptions(selFam) {
@@ -712,6 +718,7 @@ function buildSceneEditor(tr, i, li) {
     html +=
       '<div class="cue cue-' + c.type + '" data-c="' + ci + '">' +
         '<div class="cue-head">' +
+          '<span class="cue-grip" title="Trascina per riordinare (il tempo si adatta)">⠿</span>' +
           '<span class="cue-ico">' + EL_ICON[c.type] + '</span>' +
           '<span class="cue-type">' + EL_LABEL[c.type] + '</span>' +
           '<span class="cue-at">@</span>' +
@@ -791,9 +798,66 @@ function buildSceneEditor(tr, i, li) {
   // keep the open editor (no re-render) for smooth slider/typing edits
   const saveLive = () => { savePlaylistState(); refreshScenePreview(i); li.querySelector('.scene-btn').classList.toggle('active', hasScene(tr)); };
 
+  // Scene-element drag & drop: the list is always shown time-sorted, so
+  // dropping an element between two others moves its appearance time between
+  // theirs (before the first = half its time, after the last = +5s).
+  let cueFrom = -1;
   ed.querySelectorAll('.cue').forEach(cueEl => {
     const ci = parseInt(cueEl.dataset.c, 10);
     const c = cues[ci];
+
+    // Only the grip arms the drag: the cards contain sliders/inputs whose own
+    // mouse-drags must keep working.
+    const grip = cueEl.querySelector('.cue-grip');
+    grip.addEventListener('mousedown', () => {
+      cueEl.draggable = true;
+      document.addEventListener('mouseup', () => { cueEl.draggable = false; }, { once: true });
+    });
+    cueEl.addEventListener('dragstart', (e) => {
+      cueFrom = ci; cueDragging = true;
+      cueEl.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      try { e.dataTransfer.setData('text/plain', 'cue'); } catch (err) {}
+    });
+    cueEl.addEventListener('dragend', () => {
+      cueFrom = -1; cueDragging = false; cueEl.draggable = false;
+      cueEl.classList.remove('dragging');
+      clearDropMarks();
+      if (plDirty) { plDirty = false; renderPlaylist(); }
+    });
+    cueEl.addEventListener('dragover', (e) => {
+      if (cueFrom < 0) return;
+      e.preventDefault(); e.stopPropagation();
+      e.dataTransfer.dropEffect = 'move';
+      const r = cueEl.getBoundingClientRect();
+      const below = (e.clientY - r.top) > r.height / 2;
+      if (cueEl !== dragMarkEl || below !== dragMarkBelow) {
+        clearDropMarks();
+        dragMarkEl = cueEl; dragMarkBelow = below;
+        cueEl.classList.add(below ? 'drop-below' : 'drop-above');
+      }
+    });
+    cueEl.addEventListener('drop', (e) => {
+      e.preventDefault(); e.stopPropagation();
+      const from = cueFrom;
+      cueFrom = -1; cueDragging = false;
+      clearDropMarks();
+      if (from < 0) return;
+      const r2 = cueEl.getBoundingClientRect();
+      let pos = ci + ((e.clientY - r2.top) > r2.height / 2 ? 1 : 0);
+      if (from < pos) pos--;
+      const moved = cues[from];
+      const others = cues.filter((_, k) => k !== from);
+      if (pos < 0 || pos > others.length) return;
+      let t;
+      if (!others.length) t = moved.time;
+      else if (pos === 0) t = Math.max(0, others[0].time / 2);
+      else if (pos === others.length) t = others[others.length - 1].time + 5;
+      else t = (others[pos - 1].time + others[pos].time) / 2;
+      moved.time = Math.round(t * 10) / 10;
+      save(); // re-sorts by time and re-renders the editor
+    });
+
     cueEl.querySelector('.cue-time').addEventListener('change', (e) => { c.time = parseTime(e.target.value); save(); });
     cueEl.querySelector('.cue-dur').addEventListener('change', (e) => { c.dur = Math.max(0, parseFloat(e.target.value) || 0); saveLive(); });
     cueEl.querySelector('.cue-del').addEventListener('click', () => { cues.splice(ci, 1); save(); });
@@ -846,6 +910,10 @@ function buildSceneEditor(tr, i, li) {
 }
 
 function renderPlaylist() {
+  // Never rebuild the list mid-drag: replacing the dragged node would cancel
+  // the browser drag instantly (progress re-renders arrive every ~400ms while
+  // a track plays, which made reordering impossible). Deferred to dragend.
+  if (dragFrom >= 0 || cueDragging) { plDirty = true; return; }
   const ol = $('#playlist');
   ol.innerHTML = '';
   playlist.forEach((tr, i) => {
@@ -932,12 +1000,41 @@ function renderPlaylist() {
     }
 
     // Drag to reorder.
-    li.addEventListener('dragstart', () => { dragFrom = i; li.classList.add('dragging'); });
-    li.addEventListener('dragend', () => { dragFrom = -1; li.classList.remove('dragging'); });
-    li.addEventListener('dragover', (e) => e.preventDefault());
+    li.addEventListener('dragstart', (e) => {
+      dragFrom = i; li.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      try { e.dataTransfer.setData('text/plain', String(i)); } catch (err) {}
+    });
+    li.addEventListener('dragend', () => {
+      dragFrom = -1; li.classList.remove('dragging');
+      clearDropMarks();
+      if (plDirty) { plDirty = false; renderPlaylist(); }
+    });
+    li.addEventListener('dragover', (e) => {
+      if (dragFrom < 0) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      // Insertion marker: top half = before this item, bottom half = after.
+      const r = li.getBoundingClientRect();
+      const below = (e.clientY - r.top) > r.height / 2;
+      if (li !== dragMarkEl || below !== dragMarkBelow) {
+        clearDropMarks();
+        dragMarkEl = li; dragMarkBelow = below;
+        li.classList.add(below ? 'drop-below' : 'drop-above');
+      }
+    });
     li.addEventListener('drop', (e) => {
       e.preventDefault();
-      if (dragFrom >= 0 && dragFrom !== i) moveTrack(dragFrom, i);
+      e.stopPropagation(); // not a file drop: keep it away from the window handler
+      const from = dragFrom;
+      dragFrom = -1;
+      clearDropMarks();
+      if (from < 0) return;
+      const r = li.getBoundingClientRect();
+      let to = i + ((e.clientY - r.top) > r.height / 2 ? 1 : 0);
+      if (from < to) to--;
+      if (to !== from) moveTrack(from, to);
+      else if (plDirty) { plDirty = false; renderPlaylist(); }
     });
 
     ol.appendChild(li);
@@ -1299,7 +1396,12 @@ bindLogoSliders('logo-size', 'logo-size-val', 'logoSize', v => v + '%');
 bindLogoSliders('logo-op', 'logo-op-val', 'logoOpacity', v => v + '%', v => v / 100);
 
 // ---------------------------------------------------------------- drag & drop
-window.addEventListener('dragover', (e) => { e.preventDefault(); document.body.classList.add('dragover'); });
+window.addEventListener('dragover', (e) => {
+  e.preventDefault();
+  // Internal reorder drags (playlist/sequence) must not show the file-drop frame.
+  if (dragFrom >= 0 || seqDragFrom >= 0) return;
+  document.body.classList.add('dragover');
+});
 window.addEventListener('dragleave', (e) => { if (e.relatedTarget === null) document.body.classList.remove('dragover'); });
 window.addEventListener('drop', (e) => {
   e.preventDefault();
