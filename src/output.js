@@ -503,7 +503,8 @@ const AV_POOLS = {
     'Fluido', 'Fluido Onda', 'Fluido Vortici', 'Griglia Neon', 'Solidi 3D', 'Tunnel Neon',
     'Onda Luminosa', 'Spettro Neon', 'Onda 3D'],
   peak: ['Julia', 'Iperspazio', 'Tunnel', 'Moiré', 'Fluido Anello', 'Fluido Fuoco',
-    'Vortice', 'Griglia Neon', 'Cristalli', 'Tunnel Neon', 'Tempesta Plasma', 'Spettro Neon']
+    'Vortice', 'Griglia Neon', 'Cristalli', 'Tunnel Neon', 'Tempesta Plasma', 'Spettro Neon',
+    'Metallo Liquido']
 };
 let avMode = 'smart', avFamilies = []; // 'smart' | 'all' | 'custom'
 function avPick(mood) {

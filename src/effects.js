@@ -72,7 +72,8 @@ const FAMILIES = [
   // waveform / spectrum drawn as beams of light with flares and bokeh.
   { name: 'Onda Luminosa', scale: 1.0 },
   { name: 'Spettro Neon', scale: 1.0 },
-  { name: 'Onda 3D', scale: 1.0 }
+  { name: 'Onda 3D', scale: 1.0 },
+  { name: 'Metallo Liquido', scale: 1.0 }
 ];
 
 // Palettes: low colour (a) -> high colour (b), plus optional hue-cycle/sat.

@@ -733,6 +733,46 @@ vec3 scOnda3D(vec2 uv) {
   return col;
 }
 
+// Liquid-metal tunnel (family 58): rounded-square chrome sections flying
+// toward a blinding core. Facets carved by ridged fbm catch a cool light
+// from the depth; molten veins in the palette's complementary colour run
+// over the surfaces and pump with the bass.
+vec3 scMetallo(vec2 uv) {
+  vec2 q = uv;
+  // liquid wobble: the whole section breathes like molten chrome
+  q += 0.05 * vec2(fbm(uv * 2.0 + uT * 0.30), fbm(uv * 2.0 - uT * 0.25 + 4.7)) - 0.025;
+  float d = mix(length(q), max(abs(q.x), abs(q.y)), 0.65) + 1e-3;
+  float a = atan(q.y, q.x);
+  float z = 0.35 / d + uT * (0.8 + 0.6 * uBass * aMix);   // fly-through, bass pushes
+  float aM = abs(mod(a + uT * 0.06, 1.5707963) - 0.78539815); // 4-fold mirrored walls
+  vec2 sp = vec2(aM * 3.2, z * 0.9);
+  float n = fbm(sp + fbm(sp * 2.1) * 0.5);
+  float ridge = abs(n - 0.5) * 2.0;
+  float rib = pow(0.5 + 0.5 * cos(z * 5.65), 3.0);        // periodic section frames
+
+  vec3 cool = uColorB;
+  vec3 hsv = rgb2hsv(uColorB);
+  vec3 hot = hsv2rgb(vec3(fract(hsv.x + 0.5), max(hsv.y, 0.7), 1.0));
+
+  // dark chrome base shaded by the facets: the scene stays mostly black
+  vec3 col = (uColorA * 0.4 + vec3(0.015, 0.02, 0.035)) * (0.2 + 0.8 * pow(1.0 - ridge, 2.0));
+  // cool wash pouring out of the depth, catching the section frames
+  col += cool * exp(-d * 3.4) * (0.25 + 0.45 * rib) * (0.6 + 0.5 * uLevel * aMix);
+  // sparse specular glints on the facet edges
+  float spec = pow(clamp(1.0 - ridge * 1.9, 0.0, 1.0), 10.0);
+  col += mix(cool, vec3(1.0), 0.5) * spec * (0.2 + 0.4 * rib) * smoothstep(1.0, 0.15, d);
+  // molten veins (complementary colour): thin emissive streaks on the walls
+  float v = fbm(sp * 1.7 + vec2(7.3, -uT * 0.4));
+  float vein = smoothstep(0.70, 0.78, v) * (1.0 - smoothstep(0.82, 0.90, v));
+  col += hot * vein * (0.55 + 0.9 * uBass * aMix + 0.4 * uBeat * aMix);
+  col += hot * smoothstep(0.66, 0.78, v) * 0.08;
+  // blinding core at the end of the tunnel
+  col += mix(vec3(1.0), cool, 0.3) * exp(-d * d * 70.0) * (0.8 + 1.0 * uBeat * aMix);
+  // darken toward the camera so the geometry reads as depth
+  col *= smoothstep(1.7, 0.45, d) * 0.9 + 0.10;
+  return col * 0.85;
+}
+
 vec3 fieldRGB(int f, vec2 uv) {
   if (f == 34) return scCielo(uv);
   if (f == 35) return scAurora(uv);
@@ -747,6 +787,7 @@ vec3 fieldRGB(int f, vec2 uv) {
   if (f == 55) return scOnda(uv);
   if (f == 56) return scSpettro(uv);
   if (f == 57) return scOnda3D(uv);
+  if (f == 58) return scMetallo(uv);
   return scSupernova(uv); // f == 43
 }
 
