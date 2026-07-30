@@ -278,6 +278,7 @@ class InteractiveSim {
   }
 
   _resetMode() {
+    this.mpose = null;
     this.balls = null;
     this.parts = [];       // transient particles (bubble pops)
     this.mirror = null;
@@ -943,6 +944,37 @@ class InteractiveSim {
     this.prevBeat = audio.beat || 0;
 
     if (mode === 'fluid') { this._stepFluid(timeSec, audio, e, canvas); return; }
+
+    // ---- 3D model puppet: swipe to spin (with inertia), the model leans
+    // toward where you move, big motion makes it hop with squash & stretch.
+    if (mode === 'model') {
+      if (!this.modelSim) { this._drawField(7, e, audio, canvas, 0); return; }
+      if (!this.mpose) this.mpose = { yaw: 0, yawVel: 0, hopY: 0, hopVel: 0,
+        leanX: 0, squash: 1, rim: 0, hopCool: 0 };
+      const p = this.mpose;
+      // horizontal flow (a hand swiping across the camera) spins the model
+      p.yawVel += this.flowX * dt * 14;
+      p.yawVel *= Math.exp(-dt*1.1);
+      p.yaw += p.yawVel * dt * (e.speed || 1);
+      // lean toward the motion centroid
+      const leanTarget = this.motTotal > 2 ? (this.motCx - 0.5) * 0.55 : 0;
+      p.leanX += (leanTarget - p.leanX) * (1 - Math.exp(-dt*3.5));
+      // strong agitation makes it jump
+      p.hopCool -= dt;
+      if (this.motTotal > 16 && p.hopY <= 0.001 && p.hopCool <= 0) {
+        p.hopVel = 1.5; p.hopCool = 0.9;
+      }
+      p.hopVel -= 5.5 * dt;
+      p.hopY = Math.max(0, p.hopY + p.hopVel * dt);
+      if (p.hopY === 0 && p.hopVel < 0) p.hopVel = 0;
+      // stretch going up, squash on the ground after landing
+      const sqTarget = p.hopY > 0.001 ? 1 + Math.max(-0.2, Math.min(0.18, p.hopVel*0.12)) : 1;
+      p.squash += (sqTarget - p.squash) * (1 - Math.exp(-dt*10));
+      // touch glow from overall motion
+      p.rim += (Math.min(1, this.motTotal/22) - p.rim) * (1 - Math.exp(-dt*5));
+      this.modelSim.render(timeSec, audio, e, canvas, p);
+      return;
+    }
 
     const hueA = (e.hueBase || 0)*6.2832 + timeSec*(e.hueCycle || 0)*6.2832;
     const ca = e.colorA || [0.05, 0, 0.2], cb = e.colorB || [0.2, 1, 1];

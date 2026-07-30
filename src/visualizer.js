@@ -120,6 +120,12 @@ class Visualizer {
     if (e.isInteractive && window.InteractiveSim) {
       if (!this.inter) this.inter = new window.InteractiveSim(gl);
       this.inter.customSource = this.customSource || null;
+      // The model-puppet mode drives the shared 3D renderer.
+      if (e.interactiveMode === 'model' && window.ModelSim) {
+        if (!this.model3d) this.model3d = new window.ModelSim(gl);
+        if (this._pendingGlb) { this.model3d.setModel(this._pendingGlb); this._pendingGlb = null; }
+        this.inter.modelSim = this.model3d;
+      }
       this.inter.render(timeSec, audio, e, this.canvas);
       return;
     }

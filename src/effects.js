@@ -76,7 +76,10 @@ const FAMILIES = [
   { name: 'Metallo Liquido', scale: 1.0 },
   // GLB model renderer (model3d.js), not the uber-shader: spins a loaded 3D
   // model with palette lighting; a torus knot shows before any GLB is loaded.
-  { name: 'Modello 3D', scale: 1.0, model3d: true }
+  { name: 'Modello 3D', scale: 1.0, model3d: true },
+  // Camera-interactive puppet: swipe to spin the model, it leans toward your
+  // movement and hops when you get agitated. Excluded from Auto VJ.
+  { name: 'Interattivo Modello', scale: 1.0, interactive: true, interMode: 'model' }
 ];
 
 // Palettes: low colour (a) -> high colour (b), plus optional hue-cycle/sat.

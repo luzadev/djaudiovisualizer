@@ -30,8 +30,11 @@ function m4rotY(a) {
   const c = Math.cos(a), s = Math.sin(a);
   return new Float32Array([c,0,-s,0, 0,1,0,0, s,0,c,0, 0,0,0,1]);
 }
-function m4scaleT(s, t) { // uniform scale then translate
-  return new Float32Array([s,0,0,0, 0,s,0,0, 0,0,s,0, t[0],t[1],t[2],1]);
+function m4scale3(sx, sy, sz) {
+  return new Float32Array([sx,0,0,0, 0,sy,0,0, 0,0,sz,0, 0,0,0,1]);
+}
+function m4trans(t) {
+  return new Float32Array([1,0,0,0, 0,1,0,0, 0,0,1,0, t[0],t[1],t[2],1]);
 }
 // quaternion + TRS -> mat4 (column major)
 function trsToMat(t, r, s) {
@@ -65,7 +68,7 @@ out vec4 frag;
 uniform sampler2D uTex;
 uniform int uHasTex;
 uniform vec3 uBase, uColA, uColB, uCam;
-uniform float uBeat, uLevel, uTreble;
+uniform float uBeat, uLevel, uTreble, uRim;
 void main(){
   vec3 N = normalize(vN);
   vec3 V = normalize(uCam - vW);
@@ -76,7 +79,7 @@ void main(){
   vec3 col = base * (0.26 + 0.85*d);
   col += uColA * 1.6 * max(dot(N, -L), 0.0) * 0.4;          // palette fill light
   float fr = pow(1.0 - max(dot(N, V), 0.0), 3.0);
-  col += uColB * fr * (0.45 + 0.95*uBeat + 0.4*uLevel);     // rim pulses on beat
+  col += uColB * fr * (0.45 + 0.95*uBeat + 0.4*uLevel + 1.3*uRim); // beat + touch
   vec3 H = normalize(L + V);
   col += vec3(1.0) * pow(max(dot(N, H), 0.0), 42.0) * (0.3 + 0.5*uTreble);
   frag = vec4(col, 1.0);
@@ -274,7 +277,7 @@ class ModelSim {
       uBase: U(this.progMesh,'uBase'), uColA: U(this.progMesh,'uColA'),
       uColB: U(this.progMesh,'uColB'), uCam: U(this.progMesh,'uCam'),
       uBeat: U(this.progMesh,'uBeat'), uLevel: U(this.progMesh,'uLevel'),
-      uTreble: U(this.progMesh,'uTreble') };
+      uTreble: U(this.progMesh,'uTreble'), uRim: U(this.progMesh,'uRim') };
     this.ub = { uColA: U(this.progBg,'uColA'), uColB: U(this.progBg,'uColB'),
       uRes: U(this.progBg,'uRes'), uT: U(this.progBg,'uT'),
       uBass: U(this.progBg,'uBass'), uBeat: U(this.progBg,'uBeat') };
@@ -355,7 +358,10 @@ class ModelSim {
     }
   }
 
-  render(timeSec, audio, e, canvas) {
+  // pose (optional, from the camera-interactive mode): { yaw, leanX, hopY,
+  // squash, rim } — extra rotation, sideways lean, jump height (in radii),
+  // vertical squash & stretch, touch-glow 0..1.
+  render(timeSec, audio, e, canvas, pose) {
     const gl = this.gl;
     const speed = Math.min(2.5, e.speed || 1);
     const mix = e.audioMix !== undefined ? e.audioMix : 1;
@@ -383,14 +389,20 @@ class ModelSim {
     // model
     const asp = canvas.width/Math.max(1, canvas.height);
     const dist = this.radius*2.6;
-    const yaw = timeSec*0.45*speed;
+    // With a live pose the auto-spin slows right down: the person drives it.
+    const yaw = timeSec*0.45*speed*(pose ? 0.12 : 1) + (pose ? pose.yaw : 0);
     const eye = [Math.sin(timeSec*0.13)*this.radius*0.35,
                  this.radius*(0.25 + 0.15*Math.sin(timeSec*0.09)), dist];
     const proj = m4persp(0.72, asp, dist*0.05, dist*4.0);
     const view = m4lookAt(eye, [0, 0, 0]);
     const scale = 1 + 0.05*bass + 0.07*beat;
-    const model = m4mul(m4mul(m4rotY(yaw), m4scaleT(scale, [0,0,0])),
-      m4scaleT(1, [-this.center[0], -this.center[1], -this.center[2]]));
+    const sq = pose ? Math.max(0.7, Math.min(1.3, pose.squash || 1)) : 1;
+    const world = pose
+      ? [pose.leanX*this.radius*1.6, (pose.hopY || 0)*this.radius, 0]
+      : [0, 0, 0];
+    const model = m4mul(m4mul(m4mul(m4trans(world), m4rotY(yaw)),
+      m4scale3(scale/Math.sqrt(sq), scale*sq, scale/Math.sqrt(sq))),
+      m4trans([-this.center[0], -this.center[1], -this.center[2]]));
 
     gl.enable(gl.DEPTH_TEST);
     gl.depthFunc(gl.LEQUAL);
@@ -405,6 +417,7 @@ class ModelSim {
     gl.uniform1f(this.um.uBeat, beat);
     gl.uniform1f(this.um.uLevel, (audio.level || 0)*mix);
     gl.uniform1f(this.um.uTreble, (audio.treble || 0)*mix);
+    gl.uniform1f(this.um.uRim, pose ? (pose.rim || 0) : 0);
     for (const m of this.meshes) {
       const bind = (buf, loc, n) => {
         gl.bindBuffer(gl.ARRAY_BUFFER, buf);
