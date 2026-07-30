@@ -48,6 +48,47 @@ function trsToMat(t, r, s) {
   return m;
 }
 
+// mat3 (as 9-float, column major) helpers for the retarget solver
+function m3FromQuat(q) {
+  const [x,y,z,w] = q;
+  return [1-2*(y*y+z*z), 2*(x*y+z*w), 2*(x*z-y*w),
+          2*(x*y-z*w), 1-2*(x*x+z*z), 2*(y*z+x*w),
+          2*(x*z+y*w), 2*(y*z-x*w), 1-2*(x*x+y*y)];
+}
+function m3Mul(a, b) {
+  const o = new Array(9);
+  for (let c = 0; c < 3; c++) for (let r = 0; r < 3; r++)
+    o[c*3+r] = a[r]*b[c*3] + a[3+r]*b[c*3+1] + a[6+r]*b[c*3+2];
+  return o;
+}
+function m3ApplyT(m, v) { // transpose(m) * v  (inverse for pure rotations)
+  return [m[0]*v[0]+m[1]*v[1]+m[2]*v[2], m[3]*v[0]+m[4]*v[1]+m[5]*v[2], m[6]*v[0]+m[7]*v[1]+m[8]*v[2]];
+}
+function v3norm(v) { const l = Math.hypot(v[0],v[1],v[2]) || 1; return [v[0]/l, v[1]/l, v[2]/l]; }
+// rotation taking unit vector a onto unit vector b
+function m3FromTo(a, b) {
+  const cx = a[1]*b[2]-a[2]*b[1], cy = a[2]*b[0]-a[0]*b[2], cz = a[0]*b[1]-a[1]*b[0];
+  const d = a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
+  const s2 = cx*cx+cy*cy+cz*cz;
+  if (s2 < 1e-12) {
+    if (d > 0) return [1,0,0, 0,1,0, 0,0,1];
+    return [-1,0,0, 0,1,0, 0,0,-1];       // opposite: 180° around Y
+  }
+  const k = (1-d)/s2;
+  return [d+cx*cx*k, cz+cx*cy*k, -cy+cx*cz*k,
+          -cz+cy*cx*k, d+cy*cy*k, cx+cy*cz*k,
+          cy+cz*cx*k, -cx+cz*cy*k, d+cz*cz*k];
+}
+// mat4 rotation part with the scale stripped (for solving in world frames)
+function m4Rot3(m) {
+  const n = (x,y,z) => { const l = Math.hypot(x,y,z) || 1; return [x/l, y/l, z/l]; };
+  const c0 = n(m[0],m[1],m[2]), c1 = n(m[4],m[5],m[6]), c2 = n(m[8],m[9],m[10]);
+  return [c0[0],c0[1],c0[2], c1[0],c1[1],c1[2], c2[0],c2[1],c2[2]];
+}
+function m4FromM3T(r, t) {
+  return new Float32Array([r[0],r[1],r[2],0, r[3],r[4],r[5],0, r[6],r[7],r[8],0, t[0],t[1],t[2],1]);
+}
+
 // ------------------------------------------------------------ shaders
 const MESH_VERT = `#version 300 es
 in vec3 aPos; in vec3 aNorm; in vec2 aUV;
@@ -61,6 +102,24 @@ void main(){
   vUv = aUV;
   gl_Position = uProj * uView * w;
 }`;
+// skinned variant: vertices follow up to 4 joint matrices
+const MAXJ = 80;
+const SKIN_VERT = `#version 300 es
+in vec3 aPos; in vec3 aNorm; in vec2 aUV; in vec4 aJ; in vec4 aW;
+uniform mat4 uProj, uView, uModel;
+uniform mat4 uJoints[${MAXJ}];
+uniform float uPulse;
+out vec3 vN; out vec3 vW; out vec2 vUv;
+void main(){
+  mat4 sk = aW.x*uJoints[int(aJ.x)] + aW.y*uJoints[int(aJ.y)]
+          + aW.z*uJoints[int(aJ.z)] + aW.w*uJoints[int(aJ.w)];
+  vec4 w = uModel * sk * vec4(aPos + aNorm*uPulse, 1.0);
+  vW = w.xyz;
+  vN = mat3(uModel) * mat3(sk) * aNorm;
+  vUv = aUV;
+  gl_Position = uProj * uView * w;
+}`;
+
 const MESH_FRAG = `#version 300 es
 precision highp float;
 in vec3 vN; in vec3 vW; in vec2 vUv;
@@ -141,7 +200,17 @@ function parseGLB(buf) {
   }
   if (!json || !bin) throw new Error('GLB incompleto');
 
-  // world transform per node (baked into the vertices below)
+  // node table (hierarchy kept for skinning) + world transforms
+  const nodesInfo = json.nodes.map((n, i) => ({
+    name: n.name || ('n' + i),
+    t: n.translation || [0, 0, 0],
+    r: n.rotation || [0, 0, 0, 1],
+    s: n.scale || [1, 1, 1],
+    matrix: n.matrix || null,
+    children: n.children || [],
+    parent: -1
+  }));
+  nodesInfo.forEach((n, i) => n.children.forEach(c => { nodesInfo[c].parent = i; }));
   const worlds = {};
   const walk = (ni, parent) => {
     const node = json.nodes[ni];
@@ -154,15 +223,65 @@ function parseGLB(buf) {
   const scene = json.scenes[json.scene || 0];
   scene.nodes.forEach(n => walk(n, null));
 
+  // skin (first one): joint node indices + inverse bind matrices
+  let skel = null;
+  if (json.skins && json.skins.length) {
+    const sk = json.skins[0];
+    skel = { nodes: nodesInfo, joints: sk.joints.slice(),
+      ibm: readAccessor(json, bin, sk.inverseBindMatrices).data,
+      roots: scene.nodes.slice() };
+    if (skel.joints.length > MAXJ) throw new Error('scheletro con troppe ossa (' + skel.joints.length + ')');
+  }
+
   const prims = [];
   let min = [1e9,1e9,1e9], max = [-1e9,-1e9,-1e9];
   Object.keys(worlds).forEach(niKey => {
     const ni = parseInt(niKey, 10);
     const node = json.nodes[ni];
     if (node.mesh == null) return;
+    const skinned = skel && node.skin != null;
     const W = worlds[ni];
     json.meshes[node.mesh].primitives.forEach(p => {
       if ((p.mode || 4) !== 4 || p.attributes.POSITION == null) return;
+      if (skinned) {
+        // skinned primitive: keep mesh-space vertices, read joints/weights
+        const pos = readAccessor(json, bin, p.attributes.POSITION).data;
+        const nrm = p.attributes.NORMAL != null
+          ? readAccessor(json, bin, p.attributes.NORMAL).data : new Float32Array(pos.length);
+        const uv = p.attributes.TEXCOORD_0 != null
+          ? readAccessor(json, bin, p.attributes.TEXCOORD_0).data
+          : new Float32Array(pos.length/3*2);
+        const jr = readAccessor(json, bin, p.attributes.JOINTS_0);
+        const joints = Float32Array.from(jr.data);
+        const wr = readAccessor(json, bin, p.attributes.WEIGHTS_0);
+        let weights = Float32Array.from(wr.data);
+        const ct = wr.acc.componentType;
+        if (ct === 5121) weights = weights.map(v => v/255);
+        else if (ct === 5123) weights = weights.map(v => v/65535);
+        let idxData = null, idxType = 0;
+        if (p.indices != null) {
+          const r = readAccessor(json, bin, p.indices);
+          idxData = r.data instanceof Uint32Array || r.data instanceof Uint16Array
+            ? r.data : Uint16Array.from(r.data);
+          idxType = idxData instanceof Uint32Array ? 5125 : 5123;
+        }
+        let texBytes = null, baseColor = [0.75, 0.75, 0.8];
+        const mat = p.material != null ? json.materials[p.material] : null;
+        const pbr = mat && mat.pbrMetallicRoughness || {};
+        if (pbr.baseColorFactor) baseColor = pbr.baseColorFactor.slice(0, 3);
+        if (pbr.baseColorTexture && json.textures && json.images) {
+          const tex = json.textures[pbr.baseColorTexture.index];
+          const img = json.images[tex.source];
+          if (img && img.bufferView != null) {
+            const bv2 = json.bufferViews[img.bufferView];
+            texBytes = { bytes: new Uint8Array(bin, bv2.byteOffset || 0, bv2.byteLength),
+              mime: img.mimeType || 'image/png' };
+          }
+        }
+        prims.push({ pos, nrm, uv, idxData, idxType, baseColor, texBytes,
+          skinned: true, joints, weights });
+        return;
+      }
       const pos = readAccessor(json, bin, p.attributes.POSITION).data;
       const nrm = p.attributes.NORMAL != null
         ? readAccessor(json, bin, p.attributes.NORMAL).data
@@ -211,7 +330,7 @@ function parseGLB(buf) {
     });
   });
   if (!prims.length) throw new Error('nessuna mesh triangolare nel GLB');
-  return { prims, min, max };
+  return { prims, min, max, skel: prims.some(p => p.skinned) ? skel : null };
 }
 
 // Generated fallback: a torus knot, so the family shows something before any
@@ -269,6 +388,7 @@ class ModelSim {
       return p;
     };
     this.progMesh = prog(MESH_VERT, MESH_FRAG);
+    this.progSkin = prog(SKIN_VERT, MESH_FRAG);
     this.progBg = prog(BG_VERT, BG_FRAG);
     const U = (p, n) => gl.getUniformLocation(p, n);
     this.um = { uProj: U(this.progMesh,'uProj'), uView: U(this.progMesh,'uView'),
@@ -278,6 +398,16 @@ class ModelSim {
       uColB: U(this.progMesh,'uColB'), uCam: U(this.progMesh,'uCam'),
       uBeat: U(this.progMesh,'uBeat'), uLevel: U(this.progMesh,'uLevel'),
       uTreble: U(this.progMesh,'uTreble'), uRim: U(this.progMesh,'uRim') };
+    this.us = {};
+    ['uProj','uView','uModel','uPulse','uTex','uHasTex','uBase','uColA','uColB',
+     'uCam','uBeat','uLevel','uTreble','uRim','uJoints'].forEach(n => {
+      this.us[n] = U(this.progSkin, n === 'uJoints' ? 'uJoints[0]' : n);
+    });
+    this.aSkin = { pos: gl.getAttribLocation(this.progSkin,'aPos'),
+      nrm: gl.getAttribLocation(this.progSkin,'aNorm'),
+      uv: gl.getAttribLocation(this.progSkin,'aUV'),
+      j: gl.getAttribLocation(this.progSkin,'aJ'),
+      w: gl.getAttribLocation(this.progSkin,'aW') };
     this.ub = { uColA: U(this.progBg,'uColA'), uColB: U(this.progBg,'uColB'),
       uRes: U(this.progBg,'uRes'), uT: U(this.progBg,'uT'),
       uBass: U(this.progBg,'uBass'), uBeat: U(this.progBg,'uBeat') };
@@ -306,6 +436,36 @@ class ModelSim {
   _upload(model) {
     const gl = this.gl;
     this._freeMeshes();
+    this.skel = model.skel || null;
+    this.restJoints = null;
+    if (this.skel) {
+      // rest-pose joint matrices, then a CPU-skinned vertex sample for the
+      // bounding box (skinned vertices live in mesh space until deformed)
+      this.restJoints = this._computeJoints(null);
+      const J = this.restJoints;
+      let mn = [1e9,1e9,1e9], mx = [-1e9,-1e9,-1e9];
+      model.prims.forEach(p => {
+        if (!p.skinned) return;
+        const n = p.pos.length/3;
+        const step = Math.max(1, Math.floor(n/800));
+        for (let i = 0; i < n; i += step) {
+          let x = 0, y = 0, z = 0;
+          const px = p.pos[i*3], py = p.pos[i*3+1], pz = p.pos[i*3+2];
+          for (let k = 0; k < 4; k++) {
+            const w = p.weights[i*4+k];
+            if (!w) continue;
+            const o = p.joints[i*4+k]*16;
+            x += w*(J[o]*px + J[o+4]*py + J[o+8]*pz + J[o+12]);
+            y += w*(J[o+1]*px + J[o+5]*py + J[o+9]*pz + J[o+13]);
+            z += w*(J[o+2]*px + J[o+6]*py + J[o+10]*pz + J[o+14]);
+          }
+          if (x < mn[0]) mn[0] = x; if (x > mx[0]) mx[0] = x;
+          if (y < mn[1]) mn[1] = y; if (y > mx[1]) mx[1] = y;
+          if (z < mn[2]) mn[2] = z; if (z > mx[2]) mx[2] = z;
+        }
+      });
+      model.min = mn; model.max = mx;
+    }
     const c = [(model.min[0]+model.max[0])/2, (model.min[1]+model.max[1])/2, (model.min[2]+model.max[2])/2];
     this.center = c;
     this.radius = Math.max(0.001, Math.hypot(model.max[0]-c[0], model.max[1]-c[1], model.max[2]-c[2]));
@@ -318,7 +478,10 @@ class ModelSim {
       };
       const m = { vboP: mk(p.pos), vboN: mk(p.nrm), vboU: mk(p.uv),
         count: p.idxData ? p.idxData.length : p.pos.length/3,
-        idxType: p.idxType, ibo: null, tex: null, baseColor: p.baseColor };
+        idxType: p.idxType, ibo: null, tex: null, baseColor: p.baseColor,
+        skinned: !!p.skinned,
+        vboJ: p.skinned ? mk(p.joints) : null,
+        vboW: p.skinned ? mk(p.weights) : null };
       if (p.idxData) {
         m.ibo = gl.createBuffer();
         gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, m.ibo);
@@ -343,6 +506,59 @@ class ModelSim {
       }
       return m;
     });
+  }
+
+  get hasSkin() { return !!this.skel; }
+
+  // Joint matrices (world * inverseBind) for the whole skeleton. With
+  // `targets` (base bone name -> world-space direction) an extra local
+  // rotation is solved per bone so that its chain child points along the
+  // target — FK retargeting of the tracked body onto the Mixamo rig.
+  _computeJoints(targets) {
+    const sk = this.skel;
+    const worlds = new Array(sk.nodes.length);
+    const base = (name) => name.split(':').pop().split('.').pop();
+    const CHAIN = { LeftArm: 'LeftForeArm', LeftForeArm: 'LeftHand',
+      RightArm: 'RightForeArm', RightForeArm: 'RightHand',
+      LeftUpLeg: 'LeftLeg', LeftLeg: 'LeftFoot',
+      RightUpLeg: 'RightLeg', RightLeg: 'RightFoot',
+      Neck: 'Head', Spine: 'Spine1' };
+    const visit = (ni, parentWorld) => {
+      const n = sk.nodes[ni];
+      let local;
+      if (n.matrix) {
+        local = new Float32Array(n.matrix);
+      } else {
+        let r3 = m3FromQuat(n.r);
+        if (targets) {
+          const tgt = targets[base(n.name)];
+          const childBase = CHAIN[base(n.name)];
+          if (tgt && childBase) {
+            let ci = -1;
+            for (const c of n.children) if (base(sk.nodes[c].name) === childBase) { ci = c; break; }
+            if (ci >= 0) {
+              const cl = v3norm(sk.nodes[ci].t);
+              const pr = parentWorld ? m4Rot3(parentWorld) : [1,0,0, 0,1,0, 0,0,1];
+              const d = v3norm(m3ApplyT(m3Mul(pr, r3), tgt));
+              r3 = m3Mul(r3, m3FromTo(cl, d));
+            }
+          }
+        }
+        const s = n.s;
+        local = m4FromM3T([r3[0]*s[0], r3[1]*s[0], r3[2]*s[0],
+          r3[3]*s[1], r3[4]*s[1], r3[5]*s[1],
+          r3[6]*s[2], r3[7]*s[2], r3[8]*s[2]], n.t);
+      }
+      const world = parentWorld ? m4mul(parentWorld, local) : local;
+      worlds[ni] = world;
+      n.children.forEach(c => visit(c, world));
+    };
+    sk.roots.forEach(r => visit(r, null));
+    const J = sk.joints.length;
+    const out = new Float32Array(J*16);
+    for (let i = 0; i < J; i++)
+      out.set(m4mul(worlds[sk.joints[i]], sk.ibm.subarray(i*16, i*16+16)), i*16);
+    return out;
   }
 
   // Load a GLB from an ArrayBuffer (called via the control panel).
@@ -558,59 +774,70 @@ class ModelSim {
     // model
     const asp = canvas.width/Math.max(1, canvas.height);
     const dist = this.radius*2.6;
+    // live body-driven skinning?
+    const skinnedLive = this.skel && pose && pose.skinTargets;
+    const curJoints = this.skel
+      ? (skinnedLive ? this._computeJoints(pose.skinTargets) : this.restJoints)
+      : null;
     // With a live pose the auto-spin slows right down: the person drives it.
-    const yaw = timeSec*0.45*speed*(pose ? 0.12 : 1) + (pose ? pose.yaw : 0);
-    const eye = [Math.sin(timeSec*0.13)*this.radius*0.35,
-                 this.radius*(0.25 + 0.15*Math.sin(timeSec*0.09)), dist];
+    const yaw = skinnedLive ? 0
+      : timeSec*0.45*speed*(pose ? 0.12 : 1) + (pose ? pose.yaw : 0);
+    const eye = [Math.sin(timeSec*0.13)*this.radius*(skinnedLive ? 0 : 0.35),
+                 this.radius*(0.25 + (skinnedLive ? 0 : 0.15*Math.sin(timeSec*0.09))), dist];
     const proj = m4persp(0.72, asp, dist*0.05, dist*4.0);
     const view = m4lookAt(eye, [0, 0, 0]);
     const scale = 1 + 0.05*bass + 0.07*beat;
-    const sq = pose ? Math.max(0.7, Math.min(1.3, pose.squash || 1)) : 1;
-    const world = pose
-      ? [pose.leanX*this.radius*1.6, (pose.hopY || 0)*this.radius, 0]
-      : [0, 0, 0];
+    const sq = pose && !skinnedLive ? Math.max(0.7, Math.min(1.3, pose.squash || 1)) : 1;
+    const world = skinnedLive
+      ? [(pose.track ? pose.track[0] : 0)*this.radius, (pose.track ? pose.track[1] : 0)*this.radius, 0]
+      : (pose ? [pose.leanX*this.radius*1.6, (pose.hopY || 0)*this.radius, 0] : [0, 0, 0]);
     const model = m4mul(m4mul(m4mul(m4trans(world), m4rotY(yaw)),
       m4scale3(scale/Math.sqrt(sq), scale*sq, scale/Math.sqrt(sq))),
       m4trans([-this.center[0], -this.center[1], -this.center[2]]));
 
     gl.enable(gl.DEPTH_TEST);
     gl.depthFunc(gl.LEQUAL);
-    gl.useProgram(this.progMesh);
-    gl.uniformMatrix4fv(this.um.uProj, false, proj);
-    gl.uniformMatrix4fv(this.um.uView, false, view);
-    gl.uniformMatrix4fv(this.um.uModel, false, model);
-    gl.uniform1f(this.um.uPulse, this.radius*0.01*bass);
-    gl.uniform3fv(this.um.uColA, ca);
-    gl.uniform3fv(this.um.uColB, cb);
-    gl.uniform3fv(this.um.uCam, eye);
-    gl.uniform1f(this.um.uBeat, beat);
-    gl.uniform1f(this.um.uLevel, (audio.level || 0)*mix);
-    gl.uniform1f(this.um.uTreble, (audio.treble || 0)*mix);
-    gl.uniform1f(this.um.uRim, pose ? (pose.rim || 0) : 0);
     for (const m of this.meshes) {
+      const u = m.skinned ? this.us : this.um;
+      const at = m.skinned ? this.aSkin : this.aMesh;
+      gl.useProgram(m.skinned ? this.progSkin : this.progMesh);
+      gl.uniformMatrix4fv(u.uProj, false, proj);
+      gl.uniformMatrix4fv(u.uView, false, view);
+      gl.uniformMatrix4fv(u.uModel, false, model);
+      gl.uniform1f(u.uPulse, m.skinned ? 0 : this.radius*0.01*bass);
+      gl.uniform3fv(u.uColA, ca);
+      gl.uniform3fv(u.uColB, cb);
+      gl.uniform3fv(u.uCam, eye);
+      gl.uniform1f(u.uBeat, beat);
+      gl.uniform1f(u.uLevel, (audio.level || 0)*mix);
+      gl.uniform1f(u.uTreble, (audio.treble || 0)*mix);
+      gl.uniform1f(u.uRim, pose ? (pose.rim || 0) : 0);
+      if (m.skinned) gl.uniformMatrix4fv(u.uJoints, false, curJoints);
       const bind = (buf, loc, n) => {
         gl.bindBuffer(gl.ARRAY_BUFFER, buf);
         gl.enableVertexAttribArray(loc);
         gl.vertexAttribPointer(loc, n, gl.FLOAT, false, 0, 0);
       };
-      bind(m.vboP, this.aMesh.pos, 3);
-      bind(m.vboN, this.aMesh.nrm, 3);
-      bind(m.vboU, this.aMesh.uv, 2);
+      bind(m.vboP, at.pos, 3);
+      bind(m.vboN, at.nrm, 3);
+      bind(m.vboU, at.uv, 2);
+      if (m.skinned) { bind(m.vboJ, at.j, 4); bind(m.vboW, at.w, 4); }
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, m.tex || null);
-      gl.uniform1i(this.um.uTex, 0);
-      gl.uniform1i(this.um.uHasTex, m.tex ? 1 : 0);
-      gl.uniform3fv(this.um.uBase, m.baseColor);
+      gl.uniform1i(u.uTex, 0);
+      gl.uniform1i(u.uHasTex, m.tex ? 1 : 0);
+      gl.uniform3fv(u.uBase, m.baseColor);
       if (m.ibo) {
         gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, m.ibo);
         gl.drawElements(gl.TRIANGLES, m.count, m.idxType === 5125 ? gl.UNSIGNED_INT : gl.UNSIGNED_SHORT, 0);
       } else {
         gl.drawArrays(gl.TRIANGLES, 0, m.count);
       }
+      gl.disableVertexAttribArray(at.nrm);
+      gl.disableVertexAttribArray(at.uv);
+      if (m.skinned) { gl.disableVertexAttribArray(at.j); gl.disableVertexAttribArray(at.w); }
     }
     gl.disable(gl.DEPTH_TEST);
-    gl.disableVertexAttribArray(this.aMesh.nrm);
-    gl.disableVertexAttribArray(this.aMesh.uv);
   }
 }
 

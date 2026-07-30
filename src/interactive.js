@@ -1031,6 +1031,42 @@ class InteractiveSim {
       // hidden, so the pelvis is synthesized and the robot shows as a bust.
       const ok = this.modelSim && L && L[11] && L[11].vis > 0.5 && L[12].vis > 0.5;
       if (!ok) { this._drawField(7, e, audio, canvas, 0); return; }
+
+      // A rigged GLB is loaded: retarget the tracked skeleton onto its bones
+      // (mirror: the user's right side drives the character's Left bones).
+      if (this.modelSim.hasSkin) {
+        const P = (i) => [L[i].x - 0.5, 0.5 - L[i].y, -(L[i].z || 0)*0.6];
+        const vis = (i) => L[i].vis > 0.4;
+        const dir = (a, b) => {
+          const d = [b[0]-a[0], b[1]-a[1], b[2]-a[2]];
+          const l = Math.hypot(d[0], d[1], d[2]) || 1;
+          return [d[0]/l, d[1]/l, d[2]/l];
+        };
+        const T = {};
+        if (vis(12) && vis(14)) T.LeftArm = dir(P(12), P(14));
+        if (vis(14) && vis(16)) T.LeftForeArm = dir(P(14), P(16));
+        if (vis(11) && vis(13)) T.RightArm = dir(P(11), P(13));
+        if (vis(13) && vis(15)) T.RightForeArm = dir(P(13), P(15));
+        const hips2 = vis(23) && vis(24);
+        if (hips2) {
+          if (vis(26)) T.LeftUpLeg = dir(P(24), P(26));
+          if (vis(26) && vis(28)) T.LeftLeg = dir(P(26), P(28));
+          if (vis(25)) T.RightUpLeg = dir(P(23), P(25));
+          if (vis(25) && vis(27)) T.RightLeg = dir(P(25), P(27));
+        }
+        const sh1p = P(11), sh2p = P(12);
+        const neckP = [(sh1p[0]+sh2p[0])/2, (sh1p[1]+sh2p[1])/2, (sh1p[2]+sh2p[2])/2];
+        if (vis(0)) T.Neck = dir(neckP, P(0));
+        let track = [neckP[0]*1.2, 0];
+        if (hips2) {
+          const h1 = P(23), h2 = P(24);
+          const pelvisP = [(h1[0]+h2[0])/2, (h1[1]+h2[1])/2, (h1[2]+h2[2])/2];
+          T.Spine = dir(pelvisP, neckP);
+          track = [pelvisP[0]*1.4, pelvisP[1]*0.8];
+        }
+        this.modelSim.render(timeSec, audio, e, canvas, { skinTargets: T, track });
+        return;
+      }
       const S = 2.6;
       const W = (i) => [(L[i].x - 0.5)*S, (0.5 - L[i].y)*S, -(L[i].z || 0)*1.2];
       const mid = (p, q) => [(p[0]+q[0])/2, (p[1]+q[1])/2, (p[2]+q[2])/2];
