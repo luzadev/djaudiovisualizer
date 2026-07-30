@@ -264,6 +264,16 @@ class InteractiveSim {
     this.video = null;
     this.camState = 'off'; // off | starting | on | error
     this.camErr = '';
+    // Body tracking (MediaPipe, optional): precise head/hands/feet points on
+    // top of the coarse motion grid. Never required: everything falls back to
+    // plain motion when the tracker is unavailable.
+    this.pose = null;
+    this.poseState = 'off';
+    this.body = null;        // { head, handL, handR, footL, footR } smoothed
+    this.lms = null;         // mapped skeleton landmarks (silhouette overlay)
+    this._camMap = null;
+    this._lastDetect = 0;
+    this._bodyMiss = 0;
 
     this.ballData = new Float32Array(MAXB*4);
     this.colData = new Float32Array(MAXB*3);
@@ -305,9 +315,59 @@ class InteractiveSim {
       await v.play();
       this.video = v;
       this.camState = 'on';
+      this._startPose();
     } catch (e) {
       this.camState = 'error';
       this.camErr = e && e.message ? e.message : String(e);
+    }
+  }
+
+  _startPose() {
+    if (this.poseState !== 'off' || !window.PoseTracker) return;
+    this.poseState = 'starting';
+    window.PoseTracker.create()
+      .then(t => { this.pose = t; this.poseState = 'on'; })
+      .catch(err => {
+        this.poseState = 'error';
+        console.warn('PoseTracker non disponibile (fallback movimento):', err);
+      });
+  }
+
+  // Detect the body ~30 times/s and map the landmarks into screen space
+  // (mirrored + cover-fitted exactly like the motion grid).
+  _updateBody(nowMs) {
+    const v = this.video;
+    if (!this.pose || !v || v.readyState < 2 || !this._camMap) return;
+    if (nowMs - this._lastDetect < 33) return;
+    this._lastDetect = nowMs;
+    let raw = null;
+    try { raw = this.pose.detect(v, nowMs); } catch (e) { return; }
+    if (!raw) {
+      if (++this._bodyMiss > 15) { this.body = null; this.lms = null; }
+      return;
+    }
+    this._bodyMiss = 0;
+    const m = this._camMap;
+    const map = (l) => ({ x: (1 - l.x)*m.sx + m.ox, y: l.y*m.sy + m.oy,
+      vis: l.visibility !== undefined ? l.visibility : 1 });
+    const lms = raw.map(map);
+    this.lms = lms;
+    const KEYS = { head: 0, handL: 16, handR: 15, footL: 28, footR: 27 }; // mirrored L/R
+    if (!this.body) this.body = {};
+    for (const k in KEYS) {
+      const p = lms[KEYS[k]];
+      const prev = this.body[k];
+      const dt = Math.max(0.02, (nowMs - (prev ? prev.t : nowMs - 33)) / 1000);
+      const b = this.body[k] = this.body[k] || { x: p.x, y: p.y, vx: 0, vy: 0, vis: 0, t: nowMs };
+      const nx = b.x + (p.x - b.x)*0.55, ny = b.y + (p.y - b.y)*0.55; // smooth
+      b.vx = b.vx*0.5 + ((nx - b.x)/dt)*0.5;
+      b.vy = b.vy*0.5 + ((ny - b.y)/dt)*0.5;
+      b.x = nx; b.y = ny; b.vis = p.vis; b.t = nowMs;
+      // moving body parts stamp precise motion blobs, so every physical mode
+      // (balls, bubbles, fluid…) reacts to hands/head/feet for free
+      const sp = Math.hypot(b.vx, b.vy);
+      if (b.vis > 0.5 && sp > 0.25)
+        this.splatMotion(b.x, b.y, 3.0 + Math.min(3, sp*1.6), Math.min(1, 0.35 + sp*0.5));
     }
   }
 
@@ -322,6 +382,9 @@ class InteractiveSim {
     this.grayInit = false;
     this.lastT = 0;
     this._mode = '';
+    this.body = null;
+    this.lms = null;
+    // the pose tracker stays loaded (expensive to recreate); it simply idles
     this._resetMode();
   }
 
@@ -351,6 +414,8 @@ class InteractiveSim {
       const ctx = this.vctx;
       const s = Math.max(GW/v.videoWidth, GH/v.videoHeight);
       const dw = v.videoWidth*s, dh = v.videoHeight*s;
+      // normalized cover-fit mapping, reused to place the pose landmarks
+      this._camMap = { sx: dw/GW, ox: (GW-dw)/2/GW, sy: dh/GH, oy: (GH-dh)/2/GH };
       ctx.save();
       ctx.translate(GW, 0); ctx.scale(-1, 1);
       ctx.drawImage(v, (GW-dw)/2, (GH-dh)/2, dw, dh);
@@ -696,9 +761,13 @@ class InteractiveSim {
   _stepBoids(dt, e, aspect) {
     const bs = this.boids, speed = Math.min(2.5, e.speed || 1);
     const dtp = dt*speed;
-    // Target: the motion centroid when someone moves, else a slow wander.
+    // Target: the tracked head when available, else the motion centroid,
+    // else a slow wander.
     let tx, ty, tw;
-    if (this.motTotal > 2) {
+    const head = this.body && this.body.head;
+    if (head && head.vis > 0.5) {
+      tx = head.x*aspect; ty = 1-head.y; tw = 2.8;
+    } else if (this.motTotal > 2) {
       tx = this.motCx*aspect; ty = 1-this.motCy; tw = 2.4;
     } else {
       tx = aspect*(0.5 + 0.3*Math.sin(this.lastT*0.23));
@@ -940,6 +1009,7 @@ class InteractiveSim {
     const nowMs = performance.now();
 
     this._updateMotion(dt, nowMs);
+    this._updateBody(nowMs);
     this.beatEdge = (audio.beat || 0) > 0.6 && this.prevBeat <= 0.6;
     this.prevBeat = audio.beat || 0;
 
@@ -952,16 +1022,27 @@ class InteractiveSim {
       if (!this.mpose) this.mpose = { yaw: 0, yawVel: 0, hopY: 0, hopVel: 0,
         leanX: 0, squash: 1, rim: 0, hopCool: 0 };
       const p = this.mpose;
-      // horizontal flow (a hand swiping across the camera) spins the model
-      p.yawVel += this.flowX * dt * 14;
+      const bd = this.body;
+      const handL = bd && bd.handL && bd.handL.vis > 0.5 ? bd.handL : null;
+      const handR = bd && bd.handR && bd.handR.vis > 0.5 ? bd.handR : null;
+      const head = bd && bd.head && bd.head.vis > 0.5 ? bd.head : null;
+      // spin: tracked hand swipes when available, else the coarse motion flow
+      if (handL || handR) {
+        const hvx = (handL ? handL.vx : 0) + (handR ? handR.vx : 0);
+        p.yawVel += hvx * dt * 9;
+      } else {
+        p.yawVel += this.flowX * dt * 14;
+      }
       p.yawVel *= Math.exp(-dt*1.1);
       p.yaw += p.yawVel * dt * (e.speed || 1);
-      // lean toward the motion centroid
-      const leanTarget = this.motTotal > 2 ? (this.motCx - 0.5) * 0.55 : 0;
+      // lean toward your head (or the motion centroid without tracking)
+      const leanTarget = head ? (head.x - 0.5) * 0.7
+        : (this.motTotal > 2 ? (this.motCx - 0.5) * 0.55 : 0);
       p.leanX += (leanTarget - p.leanX) * (1 - Math.exp(-dt*3.5));
-      // strong agitation makes it jump
+      // jump: raise a hand fast (tracked) or strong overall agitation
       p.hopCool -= dt;
-      if (this.motTotal > 16 && p.hopY <= 0.001 && p.hopCool <= 0) {
+      const handUp = (handL && handL.vy < -1.3) || (handR && handR.vy < -1.3);
+      if ((handUp || this.motTotal > 16) && p.hopY <= 0.001 && p.hopCool <= 0) {
         p.hopVel = 1.5; p.hopCool = 0.9;
       }
       p.hopVel -= 5.5 * dt;
@@ -1099,7 +1180,46 @@ class InteractiveSim {
       this._drawField(6, e, audio, canvas, 0, this.trail.a.tex);
       return;
     }
-    if (mode === 'silhouette') { this._drawField(3, e, audio, canvas, 0); return; }
+    if (mode === 'silhouette') {
+      this._drawField(3, e, audio, canvas, 0);
+      // With body tracking: a neon skeleton over the electric silhouette.
+      if (this.lms) {
+        const L = this.lms;
+        const W = (i) => ({ x: L[i].x*aspect, y: 1-L[i].y, v: L[i].vis });
+        const BONES = [[11,12],[11,13],[13,15],[12,14],[14,16],
+          [11,23],[12,24],[23,24],[23,25],[25,27],[24,26],[26,28]];
+        const col = palCol(0.85, 0);
+        const glowA = 0.55 + 0.45*(audio.beat || 0);
+        let vc = 0;
+        for (const [a, b] of BONES) {
+          const p1 = W(a), p2 = W(b);
+          if (p1.v < 0.5 || p2.v < 0.5) continue;
+          vc = this._v(vc, p1.x, p1.y, col[0], col[1], col[2], glowA, 1, aspect);
+          vc = this._v(vc, p2.x, p2.y, col[0], col[1], col[2], glowA, 1, aspect);
+        }
+        // neck: nose -> shoulder midpoint
+        const n = W(0), s1 = W(11), s2 = W(12);
+        if (n.v > 0.5 && s1.v > 0.5 && s2.v > 0.5) {
+          vc = this._v(vc, n.x, n.y, col[0], col[1], col[2], glowA, 1, aspect);
+          vc = this._v(vc, (s1.x+s2.x)/2, (s1.y+s2.y)/2, col[0], col[1], col[2], glowA, 1, aspect);
+        }
+        this._drawDyn(vc, true);
+        vc = 0;
+        const JOINTS = [11,12,13,14,15,16,23,24,25,26,27,28];
+        for (const j of JOINTS) {
+          const p = W(j);
+          if (p.v < 0.5) continue;
+          vc = this._v(vc, p.x, p.y, col[0], col[1], col[2], 0.9, 5*pxScale, aspect);
+        }
+        if (n.v > 0.5) { // glowing head
+          const hc = palCol(0.5, 0);
+          vc = this._v(vc, n.x, n.y, hc[0], hc[1], hc[2], 1.0,
+            (16 + 5*(audio.beat || 0))*pxScale, aspect);
+        }
+        this._drawDyn(vc, false);
+      }
+      return;
+    }
     if (mode === 'firewall')   { this._drawField(4, e, audio, canvas, 0); return; }
 
     // Unknown mode: plain background.

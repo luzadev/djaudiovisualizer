@@ -1,7 +1,14 @@
-const { app, BrowserWindow, screen, ipcMain, systemPreferences, shell, dialog } = require('electron');
+const { app, BrowserWindow, screen, ipcMain, systemPreferences, shell, dialog, protocol, net } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { execFile } = require('child_process');
+const { pathToFileURL } = require('url');
+
+// djvres:// serves the MediaPipe WASM runtime and the bundled pose model to
+// the renderer: fetch() does not work on file:// URLs, and the pose tracker
+// loads its assets via fetch. Registered before app.ready as required.
+protocol.registerSchemesAsPrivileged([{ scheme: 'djvres',
+  privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, corsEnabled: true } }]);
 
 let controlWin = null;   // panel with all the controls (primary screen)
 let outputWin = null;    // pure visualization (external screen, fullscreen)
@@ -115,6 +122,29 @@ ipcMain.handle('cam:ensure', async () => {
 app.on('before-quit', () => { quitting = true; });
 
 app.whenReady().then(async () => {
+  // djvres://mp/<file> -> node_modules/@mediapipe/tasks-vision/<file>
+  // djvres://models/<file> -> models/<file>
+  const RES_ROOTS = {
+    mp: path.join(__dirname, 'node_modules', '@mediapipe', 'tasks-vision'),
+    models: path.join(__dirname, 'models')
+  };
+  protocol.handle('djvres', async (req) => {
+    try {
+      const u = new URL(req.url);
+      const root = RES_ROOTS[u.host];
+      const rel = decodeURIComponent(u.pathname).replace(/^\//, '');
+      if (!root || rel.includes('..')) return new Response('forbidden', { status: 403 });
+      const res = await net.fetch(pathToFileURL(path.join(root, rel)).toString());
+      const headers = new Headers();
+      headers.set('Access-Control-Allow-Origin', '*');
+      if (rel.endsWith('.wasm')) headers.set('Content-Type', 'application/wasm');
+      else if (rel.endsWith('.js') || rel.endsWith('.mjs')) headers.set('Content-Type', 'text/javascript');
+      return new Response(res.body, { status: res.status, headers });
+    } catch (e) {
+      return new Response('not found', { status: 404 });
+    }
+  });
+
   if (process.platform === 'darwin' && app.dock) {
     try { app.dock.setIcon(path.join(__dirname, 'build', 'icon_1024.png')); } catch (e) { /* non-fatal */ }
   }

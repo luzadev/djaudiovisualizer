@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta http-equiv="Content-Security-Policy"
-        content="default-src 'self'; img-src 'self' blob: data: file:; media-src 'self' blob: file:; style-src 'self' 'unsafe-inline'; script-src 'self'" />
+        content="default-src 'self'; img-src 'self' blob: data: file:; media-src 'self' blob: file:; style-src 'self' 'unsafe-inline'; script-src 'self' djvres: 'wasm-unsafe-eval'; connect-src 'self' djvres:" />
   <title>DJ Visualizer — Output</title>
   <link rel="stylesheet" href="style.css" />
 </head>
@@ -46,6 +46,8 @@
   <script src="shaders.js"></script>
   <script src="effects.js"></script>
   <script src="fluid.js"></script>
+  <script src="../node_modules/@mediapipe/tasks-vision/vision_bundle.js"></script>
+  <script src="pose.js"></script>
   <script src="interactive.js"></script>
   <script src="model3d.js"></script>
   <script src="visualizer.js"></script>
