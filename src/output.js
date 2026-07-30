@@ -549,7 +549,7 @@ function avTick(now) {
   djv.report({ type: 'autoVj', on: true, name: e.name, mood, bpm: audio.bpm || 0 });
 }
 
-let camErrReported = false;
+let camErrReported = false, poseErrReported = false, avatarHintAt = 0, avatarHinted = false;
 function frame() {
   const t = (performance.now() - startTime) / 1000;
   audio.update();
@@ -564,6 +564,24 @@ function frame() {
     djv.report({ type: 'error', message: 'Camera non disponibile (' + viz.inter.camErr +
       ') — l’effetto Interattivo funziona comunque con il mouse sull’output' });
   }
+  // Body-tracking diagnostics: tracker failed, or avatar active with no body.
+  const now2 = performance.now();
+  if (viz.inter && viz.inter.poseState === 'error' && !poseErrReported) {
+    poseErrReported = true;
+    djv.report({ type: 'error', message: 'Tracking corpo non disponibile: le famiglie ' +
+      'Interattivo usano solo il movimento (Avatar non può funzionare)' });
+  }
+  if (viz.effect && viz.effect.interactiveMode === 'avatar' && viz.inter) {
+    if (viz.inter.lmsRaw) { avatarHintAt = 0; avatarHinted = true; }
+    else if (!avatarHinted) {
+      if (!avatarHintAt) avatarHintAt = now2;
+      else if (now2 - avatarHintAt > 5000) {
+        avatarHinted = true;
+        djv.report({ type: 'error', message: 'Avatar: nessun corpo rilevato — mettiti davanti ' +
+          'alla camera (almeno il busto ben inquadrato e illuminato)' });
+      }
+    }
+  } else { avatarHintAt = 0; }
 
   // Report beat rising-edges so the control window can auto-cycle effects.
   if (a.beat > 0.6 && prevBeat <= 0.6) djv.report({ type: 'beat' });
