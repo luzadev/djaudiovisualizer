@@ -320,6 +320,17 @@ djv.onControl(async (m) => {
       djv.report({ type: 'autoVj', on: autoVj });
       break;
     case 'svg': loadCustomTexture(m.dataUrl); break;
+    case 'glb':
+      try {
+        const bytes = await djv.readFile(m.path);
+        if (!bytes) throw new Error('file non leggibile');
+        const buf = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+        const ok = viz.setModelData(buf);
+        if (ok === false) throw new Error((viz.model3d && viz.model3d.loadError) || 'GLB non valido');
+        djv.report({ type: 'glbLoaded', name: m.path.split('/').pop() });
+        hideHint();
+      } catch (e) { djv.report({ type: 'error', message: 'GLB: ' + e.message }); }
+      break;
     case 'ledArea': {
       // Confine the whole show to a W×H rectangle at X,Y (LED pixel mapping).
       const st = $('#stage').style;

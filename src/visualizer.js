@@ -86,6 +86,14 @@ class Visualizer {
     this.effect = Object.assign({}, this.effect, effect);
   }
 
+  // Load a GLB model for the 'Modello 3D' family. Parsed lazily on the next
+  // render so the engine is only created when the family is active.
+  setModelData(buf) {
+    if (this.model3d) return this.model3d.setModel(buf);
+    this._pendingGlb = buf;
+    return true;
+  }
+
   // Upload a custom source (HTMLImageElement / HTMLCanvasElement) for the
   // SVG/Image effect family. Flipped on the Y axis to match screen space.
   setTexture(source) {
@@ -103,6 +111,12 @@ class Visualizer {
     const gl = this.gl, u = this.u, e = this.effect;
     // Release the camera as soon as a non-interactive preset takes over.
     if (this.inter && !e.isInteractive) this.inter.suspend();
+    if (e.isModel3d && window.ModelSim) {
+      if (!this.model3d) this.model3d = new window.ModelSim(gl);
+      if (this._pendingGlb) { this.model3d.setModel(this._pendingGlb); this._pendingGlb = null; }
+      this.model3d.render(timeSec, audio, e, this.canvas);
+      return;
+    }
     if (e.isInteractive && window.InteractiveSim) {
       if (!this.inter) this.inter = new window.InteractiveSim(gl);
       this.inter.customSource = this.customSource || null;

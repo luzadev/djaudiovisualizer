@@ -143,6 +143,30 @@ $('#svg-input').addEventListener('change', (e) => {
   e.target.value = '';
 });
 
+// --- 3D model (GLB) for the 'Modello 3D' family -----------------------------
+// The path persists and is re-sent when the output window (re)starts.
+let glbPath = localStorage.getItem('glb3d') || '';
+function glbSend() { if (glbPath) send({ type: 'glb', path: glbPath }); }
+function glbLabel(name) {
+  $('#glb-name').textContent = name
+    ? '🧊 ' + name + ' — attiva la famiglia “Modello 3D” per vederlo.'
+    : 'Il modello ruota a tempo di musica nella famiglia “Modello 3D”.';
+}
+if (glbPath) glbLabel(glbPath.split('/').pop());
+$('#btn-glb-load').addEventListener('click', () => $('#glb-input').click());
+$('#glb-input').addEventListener('change', (e) => {
+  const f = e.target.files[0];
+  if (!f) return;
+  const p = djv.pathForFile(f);
+  if (p) {
+    glbPath = p;
+    localStorage.setItem('glb3d', p);
+    glbSend();
+    glbLabel(f.name);
+  }
+  e.target.value = '';
+});
+
 // --- Effect sequence (playlist of effects with auto-cycle) ---
 let sequence = [];          // { effect, key }
 let seqIndex = -1;
@@ -1495,6 +1519,7 @@ djv.onReport((m) => {
       // The output reports its devices once at startup: good moment to push
       // config the (possibly recreated) output window doesn't have yet.
       if (ledCfg.on) ledSend();
+      glbSend();
       const sel = $('#device-select');
       const cur = sel.value;
       sel.innerHTML = '<option value="">— Input live (mic/line/BlackHole) —</option>';

@@ -73,7 +73,10 @@ const FAMILIES = [
   { name: 'Onda Luminosa', scale: 1.0 },
   { name: 'Spettro Neon', scale: 1.0 },
   { name: 'Onda 3D', scale: 1.0 },
-  { name: 'Metallo Liquido', scale: 1.0 }
+  { name: 'Metallo Liquido', scale: 1.0 },
+  // GLB model renderer (model3d.js), not the uber-shader: spins a loaded 3D
+  // model with palette lighting; a torus knot shows before any GLB is loaded.
+  { name: 'Modello 3D', scale: 1.0, model3d: true }
 ];
 
 // Palettes: low colour (a) -> high colour (b), plus optional hue-cycle/sat.
@@ -134,7 +137,8 @@ function makeEffect(fi, pi, vi) {
     isFluid: fam.fluid ? 1 : 0,
     fluidMode: fam.fluidMode || 'ink',
     isInteractive: fam.interactive ? 1 : 0,
-    interactiveMode: fam.interMode || 'balls'
+    interactiveMode: fam.interMode || 'balls',
+    isModel3d: fam.model3d ? 1 : 0
   };
 }
 
