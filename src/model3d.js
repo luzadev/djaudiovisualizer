@@ -330,7 +330,26 @@ function parseGLB(buf) {
     });
   });
   if (!prims.length) throw new Error('nessuna mesh triangolare nel GLB');
-  return { prims, min, max, skel: prims.some(p => p.skinned) ? skel : null };
+  const hasSkin = prims.some(p => p.skinned);
+  // animation clips (rotation/translation channels) for skinned models
+  let anims = null;
+  if (hasSkin && json.animations && json.animations.length) {
+    anims = json.animations.map(a => {
+      const channels = a.channels
+        .filter(ch => ch.target.node != null &&
+          (ch.target.path === 'rotation' || ch.target.path === 'translation'))
+        .map(ch => {
+          const s = a.samplers[ch.sampler];
+          return { node: ch.target.node, path: ch.target.path,
+            times: readAccessor(json, bin, s.input).data,
+            vals: readAccessor(json, bin, s.output).data };
+        });
+      let dur = 0;
+      channels.forEach(c => { const e = c.times[c.times.length-1]; if (e > dur) dur = e; });
+      return { name: a.name || 'clip', channels, dur: Math.max(0.1, dur) };
+    });
+  }
+  return { prims, min, max, skel: hasSkin ? skel : null, anims };
 }
 
 // Generated fallback: a torus knot, so the family shows something before any
@@ -437,7 +456,9 @@ class ModelSim {
     const gl = this.gl;
     this._freeMeshes();
     this.skel = model.skel || null;
+    this.anims = model.anims || null;
     this.restJoints = null;
+    this._db = null;
     if (this.skel) {
       // rest-pose joint matrices, then a CPU-skinned vertex sample for the
       // bounding box (skinned vertices live in mesh space until deformed)
@@ -514,7 +535,74 @@ class ModelSim {
   // `targets` (base bone name -> world-space direction) an extra local
   // rotation is solved per bone so that its chain child points along the
   // target — FK retargeting of the tracked body onto the Mixamo rig.
-  _computeJoints(targets) {
+  // Sample the first animation clip at time tt (looping): node -> {r?, t?}.
+  _sampleAnim(tt) {
+    const a = this.anims[0];
+    const T = tt % a.dur;
+    const out = {};
+    for (const ch of a.channels) {
+      const times = ch.times;
+      let i = 0;
+      while (i < times.length - 2 && times[i+1] < T) i++;
+      const t0 = times[i], t1 = times[i+1] !== undefined ? times[i+1] : t0;
+      const f = t1 > t0 ? Math.min(1, Math.max(0, (T - t0)/(t1 - t0))) : 0;
+      const o = out[ch.node] || (out[ch.node] = {});
+      if (ch.path === 'rotation') {
+        const A = ch.vals, i4 = i*4, j4 = Math.min(i4+4, A.length-4);
+        let d = A[i4]*A[j4] + A[i4+1]*A[j4+1] + A[i4+2]*A[j4+2] + A[i4+3]*A[j4+3];
+        const sg = d < 0 ? -1 : 1;
+        const q = [A[i4] + (A[j4]*sg - A[i4])*f, A[i4+1] + (A[j4+1]*sg - A[i4+1])*f,
+                   A[i4+2] + (A[j4+2]*sg - A[i4+2])*f, A[i4+3] + (A[j4+3]*sg - A[i4+3])*f];
+        const l = Math.hypot(q[0], q[1], q[2], q[3]) || 1;
+        o.r = [q[0]/l, q[1]/l, q[2]/l, q[3]/l];
+      } else {
+        const V = ch.vals, i3 = i*3, j3 = Math.min(i3+3, V.length-3);
+        o.t = [V[i3] + (V[j3]-V[i3])*f, V[i3+1] + (V[j3+1]-V[i3+1])*f, V[i3+2] + (V[j3+2]-V[i3+2])*f];
+      }
+    }
+    return out;
+  }
+
+  // Beat-locked procedural dance for rigged models without animation clips:
+  // arms pump on alternate beats, hips sway, head nods, knees bounce. A
+  // free-running metronome keeps the groove between detected beats.
+  _danceTargets(t, beat, bass) {
+    const db = this._db || (this._db = { n: 0, last: -1, period: 0.5, prevBeat: 0 });
+    if (beat > 0.6 && db.prevBeat <= 0.6) {
+      if (db.last >= 0) {
+        const iv = t - db.last;
+        if (iv > 0.24 && iv < 1.3) db.period = iv;
+      }
+      db.last = t; db.n++;
+    } else if (db.last < 0 || t - db.last > db.period*1.6) {
+      db.last = db.last < 0 ? t : db.last + db.period;
+      db.n++;
+    }
+    db.prevBeat = beat;
+    const p = Math.min(1, Math.max(0, (t - db.last)/db.period));
+    const sm = p*p*(3 - 2*p);
+    const ph = (db.n + sm)*Math.PI;
+    const s = Math.sin(ph);
+    const bounce = Math.abs(s);
+    const amp = 0.65 + 0.6*bass;
+    return {
+      targets: {
+        Spine: v3norm([s*0.16*amp, 1, 0.05]),
+        Neck: v3norm([s*0.22*amp, 1, 0.16]),
+        LeftArm: v3norm([0.75, -0.45 + 1.0*amp*Math.max(0, s), 0.25]),
+        LeftForeArm: v3norm([0.30, 0.40 + 0.6*amp*Math.max(0, s), 0.5]),
+        RightArm: v3norm([-0.75, -0.45 + 1.0*amp*Math.max(0, -s), 0.25]),
+        RightForeArm: v3norm([-0.30, 0.40 + 0.6*amp*Math.max(0, -s), 0.5]),
+        LeftUpLeg: v3norm([0.15, -1, 0.08*bounce]),
+        RightUpLeg: v3norm([-0.15, -1, 0.08*bounce]),
+        LeftLeg: v3norm([0.05, -1, -0.10*bounce]),
+        RightLeg: v3norm([-0.05, -1, -0.10*bounce])
+      },
+      bounceY: (bounce - 0.5)*0.05
+    };
+  }
+
+  _computeJoints(targets, anim) {
     const sk = this.skel;
     const worlds = new Array(sk.nodes.length);
     const base = (name) => name.split(':').pop().split('.').pop();
@@ -526,10 +614,12 @@ class ModelSim {
     const visit = (ni, parentWorld) => {
       const n = sk.nodes[ni];
       let local;
-      if (n.matrix) {
+      const ao = anim && anim[ni];
+      if (n.matrix && !ao) {
         local = new Float32Array(n.matrix);
       } else {
-        let r3 = m3FromQuat(n.r);
+        let r3 = m3FromQuat(ao && ao.r ? ao.r : n.r);
+        const nt = ao && ao.t ? ao.t : n.t;
         if (targets) {
           const tgt = targets[base(n.name)];
           const childBase = CHAIN[base(n.name)];
@@ -547,7 +637,7 @@ class ModelSim {
         const s = n.s;
         local = m4FromM3T([r3[0]*s[0], r3[1]*s[0], r3[2]*s[0],
           r3[3]*s[1], r3[4]*s[1], r3[5]*s[1],
-          r3[6]*s[2], r3[7]*s[2], r3[8]*s[2]], n.t);
+          r3[6]*s[2], r3[7]*s[2], r3[8]*s[2]], nt);
       }
       const world = parentWorld ? m4mul(parentWorld, local) : local;
       worlds[ni] = world;
@@ -774,11 +864,20 @@ class ModelSim {
     // model
     const asp = canvas.width/Math.max(1, canvas.height);
     const dist = this.radius*2.6;
-    // live body-driven skinning?
+    // live body-driven skinning? else: animation clip or procedural dance
     const skinnedLive = this.skel && pose && pose.skinTargets;
-    const curJoints = this.skel
-      ? (skinnedLive ? this._computeJoints(pose.skinTargets) : this.restJoints)
-      : null;
+    let curJoints = null, danceY = 0;
+    if (this.skel) {
+      if (skinnedLive) {
+        curJoints = this._computeJoints(pose.skinTargets);
+      } else if (this.anims) {
+        curJoints = this._computeJoints(null, this._sampleAnim(timeSec*speed));
+      } else {
+        const dance = this._danceTargets(timeSec, beat, bass);
+        curJoints = this._computeJoints(dance.targets);
+        danceY = dance.bounceY*this.radius;
+      }
+    }
     // With a live pose the auto-spin slows right down: the person drives it.
     const yaw = skinnedLive ? 0
       : timeSec*0.45*speed*(pose ? 0.12 : 1) + (pose ? pose.yaw : 0);
@@ -790,7 +889,7 @@ class ModelSim {
     const sq = pose && !skinnedLive ? Math.max(0.7, Math.min(1.3, pose.squash || 1)) : 1;
     const world = skinnedLive
       ? [(pose.track ? pose.track[0] : 0)*this.radius, (pose.track ? pose.track[1] : 0)*this.radius, 0]
-      : (pose ? [pose.leanX*this.radius*1.6, (pose.hopY || 0)*this.radius, 0] : [0, 0, 0]);
+      : (pose ? [pose.leanX*this.radius*1.6, (pose.hopY || 0)*this.radius, 0] : [0, danceY, 0]);
     const model = m4mul(m4mul(m4mul(m4trans(world), m4rotY(yaw)),
       m4scale3(scale/Math.sqrt(sq), scale*sq, scale/Math.sqrt(sq))),
       m4trans([-this.center[0], -this.center[1], -this.center[2]]));
