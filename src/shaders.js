@@ -591,6 +591,108 @@ vec3 scSupernova(vec2 uv) {
   return col;
 }
 
+// ---- Cinematic audio-light families (55-56): the sound drawn as light -----
+// Smoothed waveform amplitude at a normalized x position.
+float wamp(float xn) {
+  float fx = clamp(xn, 0.0, 1.0) * 255.0;
+  int i0 = int(floor(fx));
+  return abs(waveAt(i0)) * 0.5
+       + (abs(waveAt(min(i0 + 4, 255))) + abs(waveAt(max(i0 - 4, 0)))) * 0.25;
+}
+// Soft out-of-focus dots drifting slowly (two layers are combined by callers).
+vec3 scBokeh(vec2 uv, float n, float th, float soft) {
+  vec2 g = floor(uv * n);
+  float h = hash(g);
+  vec2 o = vec2(hash(g + 1.3), hash(g + 2.7)) * 0.6 + 0.2;
+  float d = length(fract(uv * n) - o);
+  float tw = 0.5 + 0.5 * sin(uT * (0.8 + h) + h * 6.283);
+  return mix(uColorA * 2.0, uColorB, hash(g + 4.1))
+       * smoothstep(soft, soft * 0.25, d) * step(th, h) * tw;
+}
+// Sparse thin rays converging on the vanishing point.
+float scRays(vec2 uv) {
+  float a = atan(uv.y, uv.x), r = length(uv);
+  float cell = floor((a + 3.14159265) * 5.73);   // 36 angular sectors
+  float h = hash(vec2(cell, 11.3));
+  float f = fract((a + 3.14159265) * 5.73) - 0.5;
+  return exp(-f * f * 90.0) * step(0.62, h) * smoothstep(0.06, 0.3, r)
+       * exp(-r * 1.6) * (0.5 + 0.5 * sin(uT * 0.7 + h * 6.283));
+}
+
+// The live waveform as a horizontal beam of light: white-hot crest, lens
+// flare along the axis, vertical light pillars where the music is loud,
+// twinkling cross sparkles, rays and bokeh for cinematic depth.
+vec3 scOnda(vec2 uv) {
+  vec3 col = vec3(0.0);
+  float xn = uv.x * 0.5 + 0.5;
+  float ay = abs(uv.y);
+  float amp = wamp(xn) * (0.35 + 0.5 * uBass * aMix) + 0.015 + 0.04 * uLevel * aMix;
+
+  // glowing envelope + hot core
+  float env = exp(-pow(ay / (amp * 0.55 + 0.010), 2.0));
+  float core = exp(-pow(ay / (amp * 0.22 + 0.004), 2.0));
+  col += uColorB * env * (0.40 + 0.45 * uLevel * aMix);
+  col += mix(uColorB, vec3(1.0), 0.7) * core * (0.62 + 0.55 * uBeat * aMix);
+
+  // horizontal lens flare + vanishing-point hot spot
+  col += uColorB * (exp(-ay * 22.0) * 0.22 + exp(-ay * 6.0) * 0.08);
+  col += mix(uColorB, vec3(1.0), 0.5)
+       * exp(-(uv.x * uv.x * 3.0 + uv.y * uv.y * 60.0)) * (0.5 + 0.5 * uBeat * aMix);
+
+  // vertical light pillars on loud columns
+  float ci = floor(xn * 22.0);
+  float h = hash(vec2(ci, 3.7));
+  float xc = ((ci + 0.5) / 22.0 - 0.5) * 2.0;
+  float dx = uv.x - xc;
+  float pil = exp(-dx * dx * 3000.0) * exp(-ay * (2.2 + 3.0 * h)) * step(0.35, h);
+  col += mix(uColorA * 1.5, uColorB, h) * pil
+       * (0.25 + 1.6 * wamp((ci + 0.5) / 22.0)) * (0.55 + 0.45 * sin(uT * 2.0 + h * 6.283));
+
+  // cross sparkles riding the beam
+  float sc = floor(xn * 14.0);
+  float hs = hash(vec2(sc, 9.1));
+  float xs = ((sc + 0.2 + 0.6 * hash(vec2(sc, 5.5))) / 14.0 - 0.5) * 2.0;
+  vec2 d = vec2(uv.x - xs, uv.y - (hash(vec2(sc, 6.6)) - 0.5) * 0.10);
+  float cross = exp(-(abs(d.x) * 90.0 + abs(d.y) * 14.0))
+              + exp(-(abs(d.x) * 14.0 + abs(d.y) * 90.0));
+  col += mix(uColorB, vec3(1.0), 0.4) * cross * step(0.30, hs)
+       * (0.4 + 0.6 * sin(uT * 3.0 + hs * 6.283 + uTreble * aMix * 6.0)) * 0.8;
+
+  // depth dressing: rays, faint wall panels, two bokeh layers
+  col += uColorB * scRays(uv) * 0.5;
+  col += uColorA * fbm(vec2(uv.x * 6.0, uv.y * 1.5 + uT * 0.05)) * 0.25
+       * smoothstep(0.15, 0.55, ay);
+  col += scBokeh(uv + vec2(uT * 0.010, 0.0), 5.0, 0.80, 0.16) * 0.35;
+  col += scBokeh(uv * 1.7 + vec2(3.1 + uT * 0.006, 1.3), 8.0, 0.85, 0.06) * 0.5;
+  return col;
+}
+
+// The 32-band spectrum as mirrored neon bars with hot tips, on the same
+// cinematic stage (flare, hot spot, rays, bokeh).
+vec3 scSpettro(vec2 uv) {
+  vec3 col = vec3(0.0);
+  float xn = uv.x * 0.5 + 0.5;
+  float ay = abs(uv.y);
+  float fx = clamp(xn, 0.0, 1.0) * 32.0;
+  float cf = fract(fx);
+  float lv = specAt(int(clamp(floor(fx), 0.0, 31.0))) * aMix;
+  float h = lv * 0.42 + 0.02;
+  float gap = smoothstep(0.06, 0.18, min(cf, 1.0 - cf));
+  float body = step(ay, h) * gap;
+  float tip = exp(-pow((ay - h) * 36.0, 2.0)) * gap;
+  col += mix(uColorA * 2.0, uColorB, ay / max(h, 1e-3)) * body * 0.85;
+  col += mix(uColorB, vec3(1.0), 0.55) * tip * (0.9 + 0.7 * uBeat * aMix);
+  col += uColorB * exp(-ay * 4.0) * lv * 0.35;             // glow behind the bar
+
+  col += uColorB * exp(-ay * 20.0) * 0.25;                 // axis flare
+  col += mix(uColorB, vec3(1.0), 0.5)
+       * exp(-(uv.x * uv.x * 3.0 + uv.y * uv.y * 60.0)) * (0.4 + 0.6 * uBeat * aMix);
+  col += uColorB * scRays(uv) * 0.4;
+  col += scBokeh(uv + vec2(uT * 0.010, 0.0), 5.0, 0.80, 0.16) * 0.3;
+  col += scBokeh(uv * 1.7 + vec2(3.1 + uT * 0.006, 1.3), 8.0, 0.85, 0.06) * 0.45;
+  return col;
+}
+
 vec3 fieldRGB(int f, vec2 uv) {
   if (f == 34) return scCielo(uv);
   if (f == 35) return scAurora(uv);
@@ -601,6 +703,9 @@ vec3 fieldRGB(int f, vec2 uv) {
   if (f == 40) return scGriglia(uv);
   if (f == 41) return scTunnelNeon(uv);
   if (f == 42) return scTempesta(uv);
+  // 44-54 are the camera-interactive families (they never reach the shader).
+  if (f == 55) return scOnda(uv);
+  if (f == 56) return scSpettro(uv);
   return scSupernova(uv); // f == 43
 }
 

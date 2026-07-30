@@ -482,11 +482,13 @@ let frames = 0, fpsT = performance.now(), fps = 0, lastReport = 0, prevBeat = 0,
 // draws from pools of families that fit the current mood.
 let autoVj = false, avLastSwitch = 0, avBeatMark = 0, avRecent = [];
 const AV_POOLS = {
-  quiet: ['Cielo', 'Aurora', 'Mare', 'Montagne', 'Galassia', 'Nuvole', 'Fluido', 'Onde'],
+  quiet: ['Cielo', 'Aurora', 'Mare', 'Montagne', 'Galassia', 'Nuvole', 'Fluido', 'Onde',
+    'Onda Luminosa'],
   groove: ['Plasma', 'Vortice', 'Truchet', 'Esagoni', 'Spirale', 'Cellule', 'Gyroide',
-    'Fluido', 'Fluido Onda', 'Fluido Vortici', 'Griglia Neon', 'Solidi 3D', 'Tunnel Neon'],
+    'Fluido', 'Fluido Onda', 'Fluido Vortici', 'Griglia Neon', 'Solidi 3D', 'Tunnel Neon',
+    'Onda Luminosa', 'Spettro Neon'],
   peak: ['Julia', 'Iperspazio', 'Tunnel', 'Moiré', 'Fluido Anello', 'Fluido Fuoco',
-    'Vortice', 'Griglia Neon', 'Cristalli', 'Tunnel Neon', 'Tempesta Plasma']
+    'Vortice', 'Griglia Neon', 'Cristalli', 'Tunnel Neon', 'Tempesta Plasma', 'Spettro Neon']
 };
 let avMode = 'smart', avFamilies = []; // 'smart' | 'all' | 'custom'
 function avPick(mood) {

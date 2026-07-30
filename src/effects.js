@@ -67,7 +67,11 @@ const FAMILIES = [
   { name: 'Interattivo Silhouette', scale: 1.0, interactive: true, interMode: 'silhouette' },
   { name: 'Interattivo Sciame', scale: 1.0, interactive: true, interMode: 'swarm' },
   { name: 'Interattivo Piastrelle', scale: 1.0, interactive: true, interMode: 'tiles' },
-  { name: 'Interattivo Firewall', scale: 1.0, interactive: true, interMode: 'firewall' }
+  { name: 'Interattivo Firewall', scale: 1.0, interactive: true, interMode: 'firewall' },
+  // Cinematic audio-light scenic families (shader indices 55-56): the live
+  // waveform / spectrum drawn as beams of light with flares and bokeh.
+  { name: 'Onda Luminosa', scale: 1.0 },
+  { name: 'Spettro Neon', scale: 1.0 }
 ];
 
 // Palettes: low colour (a) -> high colour (b), plus optional hue-cycle/sat.
