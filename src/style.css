@@ -22,11 +22,13 @@ body.hide-cursor { cursor: none; }
   inset: 0;
   overflow: hidden;
   background: #000;
-  transform: translateZ(0);
+  /* NOTE: no transform here — it would isolate the compositing group and
+     break mix-blend-mode of the overlay images against the canvas. Children
+     use position:absolute so the box still confines them (LED area). */
 }
 
 #gl {
-  position: fixed;
+  position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
@@ -463,11 +465,14 @@ textarea.textarea-lg {
 
 body.output { cursor: none; background: #000; }
 
-/* ---- Image overlay layer ---- */
+/* ---- Image overlay layer ----
+   NOTE: the output layers (videos, images, logos, ticker…) carry NO z-index:
+   they stack by DOM order in output.html. A z-index would turn each layer
+   into a stacking context, which isolates it for compositing and silently
+   disables the overlay images' mix-blend-mode against the canvas below. */
 #overlay-images {
-  position: fixed;
+  position: absolute;
   inset: 0;
-  z-index: 4;
   pointer-events: none;
   display: flex;
   align-items: center;
@@ -489,25 +494,23 @@ body.output { cursor: none; background: #000; }
 
 /* ---- Video layer (VJ loop) ---- */
 .bg-video {
-  position: fixed;
+  position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
-  z-index: 1;            /* above the WebGL canvas, below overlays */
   pointer-events: none;
   display: none;
 }
 .bg-video.show { display: block; }
 
 .track-video {
-  position: fixed;
+  position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
   object-fit: contain;
   background: #000;
-  z-index: 2;            /* main visual when a video track plays */
   pointer-events: none;
   display: none;
 }
@@ -515,13 +518,12 @@ body.output { cursor: none; background: #000; }
 
 /* ---- Per-track scene image ---- */
 .scene-image {
-  position: fixed;
+  position: absolute;
   left: 50%; top: 50%;
   transform: translate(-50%, -50%);
   max-width: 62vw;
   max-height: 62vh;
   object-fit: contain;
-  z-index: 4;
   pointer-events: none;
   display: none;
   filter: drop-shadow(0 0 24px rgba(0,0,0,0.5));
@@ -530,12 +532,11 @@ body.output { cursor: none; background: #000; }
 
 /* ---- Independent logos ---- */
 .logo {
-  position: fixed;
+  position: absolute;
   left: 50%;
   top: 50%;
   width: 20vw;
   transform: translate(-50%, -50%);
-  z-index: 5;
   pointer-events: none;
   display: none;
   filter: drop-shadow(0 0 18px rgba(0,0,0,0.45));
@@ -544,10 +545,9 @@ body.output { cursor: none; background: #000; }
 
 /* ---- Scrolling text ticker ---- */
 #ticker {
-  position: fixed;
+  position: absolute;
   left: 0;
   right: 0;
-  z-index: 6;
   pointer-events: none;
   overflow: hidden;
   display: none;
@@ -602,9 +602,8 @@ body.output { cursor: none; background: #000; }
 
 /* Side text: vertical stacked characters scrolling on both edges */
 #side-text {
-  position: fixed;
+  position: absolute;
   inset: 0;
-  z-index: 6;
   pointer-events: none;
   display: none;
   font-size: 6vh;
@@ -655,7 +654,7 @@ body.output { cursor: none; background: #000; }
 
 /* ---- Drop hint ---- */
 #drop-hint {
-  position: fixed;
+  position: absolute;
   inset: 0;
   display: flex;
   flex-direction: column;
