@@ -404,7 +404,45 @@ class ModelSim {
         }
       }
     }
-    this.prims = { cube, sphere: this._primMesh(SP, SN, SI) };
+    // tapered capsule (limb): rounded ends, slightly narrower at the top
+    const CP = [], CN = [], CI = [], SEC = 14, CAP = 5;
+    const prof = [];
+    for (let i = 0; i <= CAP; i++) { const a = Math.PI/2*(1 - i/CAP);
+      prof.push({ r: 0.8*Math.cos(a), y: 0.72 + 0.28*Math.sin(a) }); }
+    prof.push({ r: 1.0, y: -0.72 });
+    for (let i = 1; i <= CAP; i++) { const a = Math.PI/2*i/CAP;
+      prof.push({ r: Math.cos(a), y: -0.72 - 0.28*Math.sin(a) }); }
+    prof.forEach((p, pi) => {
+      for (let j = 0; j <= SEC; j++) {
+        const th = j/SEC*Math.PI*2, x = p.r*Math.cos(th), z = p.r*Math.sin(th);
+        CP.push(x, p.y, z);
+        // capsule-style normal: radiate from the nearest axis point
+        const cy = Math.max(-0.72, Math.min(0.72, p.y));
+        const nl = Math.hypot(x, p.y-cy, z) || 1;
+        CN.push(x/nl, (p.y-cy)/nl, z/nl);
+        if (pi < prof.length-1 && j < SEC) {
+          const a0 = pi*(SEC+1)+j;
+          CI.push(a0, a0+SEC+1, a0+1, a0+1, a0+SEC+1, a0+SEC+2);
+        }
+      }
+    });
+    // rounded box: superellipsoid built from the sphere directions
+    const RP = [], RN = [], RI = [], RST = 10, RSE = 16, EE = 0.42;
+    const se = (c) => Math.sign(c)*Math.pow(Math.abs(c), EE);
+    for (let i = 0; i <= RST; i++) {
+      const ph = i/RST*Math.PI, y = Math.cos(ph), r = Math.sin(ph);
+      for (let j = 0; j <= RSE; j++) {
+        const th = j/RSE*Math.PI*2, x = r*Math.cos(th), z = r*Math.sin(th);
+        RP.push(se(x), se(y), se(z));
+        RN.push(x, y, z);          // smooth rounded-cube shading
+        if (i < RST && j < RSE) {
+          const a0 = i*(RSE+1)+j;
+          RI.push(a0, a0+RSE+1, a0+1, a0+1, a0+RSE+1, a0+RSE+2);
+        }
+      }
+    }
+    this.prims = { cube, sphere: this._primMesh(SP, SN, SI),
+      caps: this._primMesh(CP, CN, CI), rbox: this._primMesh(RP, RN, RI) };
   }
 
   // Matrix placing a unit primitive as a limb from a to b (thickness rx/rz)
@@ -470,7 +508,7 @@ class ModelSim {
     gl.uniform1f(this.um.uRim, 0.15 + 0.3*beat);
     gl.uniform1i(this.um.uHasTex, 0);
     for (const spec of parts) {
-      const m = this.prims[spec.kind === 'sphere' ? 'sphere' : 'cube'];
+      const m = this.prims[spec.kind] || this.prims.cube;
       gl.uniformMatrix4fv(this.um.uModel, false, this._partMatrix(spec));
       gl.uniform3fv(this.um.uBase, spec.col);
       const bind = (buf, loc, n) => {

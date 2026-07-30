@@ -1042,41 +1042,64 @@ class InteractiveSim {
       const hp2 = hipsVis ? W(24) : [neck[0]+shw*0.28, neck[1]-shw*1.25, neck[2]];
       const pelvis = mid(hp1, hp2);
       const t = shw;
-      const metal = [0.60, 0.64, 0.72], dark = [0.28, 0.30, 0.36];
+      // two-tone armour + palette-emissive details
+      const ca = e.colorA || [0.05, 0, 0.2];
       const acc = e.colorB || [0.2, 1, 1];
+      const metal = [0.60+ca[0]*0.18, 0.64+ca[1]*0.18, 0.72+ca[2]*0.18];
+      const dark = [0.15, 0.16, 0.21];       // undersuit / joints
+      const dark2 = [0.30, 0.32, 0.40];      // secondary plates
       const parts = [];
-      const limb = (a, b, r, col) => parts.push({ a, b, rx: r, rz: r, kind: 'cube', col });
+      const seg = (a, b, r, col, kind) => parts.push({ a, b, rx: r, rz: r, kind: kind || 'caps', col });
       const ball = (a, r, col) => parts.push({ a, b: null, rx: r, kind: 'sphere', col });
-      // torso + chest light
-      parts.push({ a: neck, b: pelvis, rx: shw*0.52, rz: shw*0.28, kind: 'cube', col: metal });
-      ball(mid(neck, mid(neck, pelvis)), t*0.10, acc);
-      // head with visor + antenna
+      const along = (a, b, k) => [a[0]+(b[0]-a[0])*k, a[1]+(b[1]-a[1])*k, a[2]+(b[2]-a[2])*k];
+      // --- torso in three segments: chest plate, abdomen, pelvis
+      const chestC = along(neck, pelvis, 0.30);
+      parts.push({ a: along(neck, pelvis, 0.02), b: along(neck, pelvis, 0.56),
+        rx: shw*0.55, rz: t*0.32, kind: 'rbox', col: metal });
+      parts.push({ a: along(neck, pelvis, 0.52), b: along(neck, pelvis, 0.80),
+        rx: shw*0.36, rz: t*0.26, kind: 'rbox', col: dark });
+      parts.push({ a: along(neck, pelvis, 0.78), b: along(neck, pelvis, 1.06),
+        rx: shw*0.45, rz: t*0.28, kind: 'rbox', col: dark2 });
+      // glowing chest core + belt light
+      ball([chestC[0], chestC[1], chestC[2]+t*0.28], t*0.09, acc);
+      ball([pelvis[0], pelvis[1]+t*0.02, pelvis[2]+t*0.24], t*0.05, acc);
+      // --- head: neck, helmet, visor, jaw, ears, antenna
       const nose = L[0].vis > 0.4 ? W(0) : [neck[0], neck[1]+t*0.55, neck[2]];
-      const headC = [nose[0], nose[1] + t*0.05, nose[2]];
-      parts.push({ a: headC, b: null, rx: t*0.34, ry: t*0.38, rz: t*0.30, kind: 'cube', col: metal });
-      parts.push({ a: [headC[0], headC[1]+t*0.02, headC[2]+t*0.30], b: null,
-        rx: t*0.24, ry: t*0.08, rz: t*0.06, kind: 'cube', col: acc });
-      ball([headC[0], headC[1]+t*0.52, headC[2]], t*0.07, acc);
-      // arms (shoulder->elbow->wrist), glowing hands
+      const headC = [nose[0], nose[1] + t*0.06, nose[2]];
+      seg(neck, headC, t*0.10, dark);
+      parts.push({ a: headC, b: null, rx: t*0.30, ry: t*0.30, rz: t*0.28, kind: 'rbox', col: metal });
+      parts.push({ a: [headC[0], headC[1]+t*0.03, headC[2]+t*0.26], b: null,
+        rx: t*0.215, ry: t*0.085, rz: t*0.06, kind: 'rbox', col: acc });
+      parts.push({ a: [headC[0], headC[1]-t*0.20, headC[2]+t*0.18], b: null,
+        rx: t*0.16, ry: t*0.075, rz: t*0.10, kind: 'rbox', col: dark2 });
+      ball([headC[0]-t*0.30, headC[1], headC[2]], t*0.085, dark2);
+      ball([headC[0]+t*0.30, headC[1], headC[2]], t*0.085, dark2);
+      seg([headC[0]+t*0.16, headC[1]+t*0.26, headC[2]], [headC[0]+t*0.22, headC[1]+t*0.52, headC[2]], t*0.025, dark2);
+      ball([headC[0]+t*0.22, headC[1]+t*0.55, headC[2]], t*0.05, acc);
+      // --- arms: shoulder pads, tapered capsules, elbow, hand plate
       const arm = (s, elI, wrI) => {
+        ball([s[0], s[1]+t*0.04, s[2]], t*0.19, metal);           // shoulder pad
         if (L[elI].vis < 0.4 || L[wrI].vis < 0.4) return;
         const el = W(elI), wr = W(wrI);
-        limb(s, el, t*0.14, metal);
-        limb(el, wr, t*0.12, metal);
-        ball(el, t*0.15, dark);
-        ball(wr, t*0.17, acc);
+        seg(s, el, t*0.115, dark);                                 // upper arm
+        ball(el, t*0.10, dark2);                                   // elbow
+        seg(el, wr, t*0.095, metal);                               // forearm
+        const hand = along(el, wr, 1.18);
+        parts.push({ a: wr, b: hand, rx: t*0.095, rz: t*0.05, kind: 'rbox', col: dark2 });
+        ball(along(el, wr, 1.10), t*0.045, acc);                   // wrist light
       };
       arm(sh1, 13, 15); arm(sh2, 14, 16);
-      ball(sh1, t*0.16, dark); ball(sh2, t*0.16, dark);
-      // legs with feet (only when actually visible: seated = bust only)
+      // --- legs: tapered capsules, knee, boot with toe
       const leg = (h, knI, anI) => {
         if (!hipsVis || L[knI].vis < 0.4 || L[anI].vis < 0.4) return;
         const kn = W(knI), an = W(anI);
-        limb(h, kn, t*0.16, metal);
-        limb(kn, an, t*0.13, metal);
-        ball(kn, t*0.16, dark);
-        parts.push({ a: [an[0], an[1]-t*0.06, an[2]+t*0.12], b: null,
-          rx: t*0.14, ry: t*0.08, rz: t*0.22, kind: 'cube', col: dark });
+        seg(h, kn, t*0.15, metal);                                 // thigh
+        ball(kn, t*0.115, dark2);                                  // knee
+        seg(kn, an, t*0.115, dark);                                // shin
+        parts.push({ a: [an[0], an[1]-t*0.04, an[2]-t*0.02],
+          b: [an[0], an[1]-t*0.09, an[2]+t*0.30], rx: t*0.115, rz: t*0.09,
+          kind: 'rbox', col: metal });                             // boot
+        ball([an[0], an[1]-t*0.06, an[2]+t*0.30], t*0.04, acc);    // toe light
       };
       leg(hp1, 25, 27); leg(hp2, 26, 28);
       this.modelSim.renderAvatar(timeSec, audio, e, canvas, parts);
