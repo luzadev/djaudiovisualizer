@@ -14,11 +14,22 @@ html, body {
 
 body.hide-cursor { cursor: none; }
 
+/* LED-wall active area: the whole show renders inside this box, black
+   outside. The transform makes it the containing block for the
+   position:fixed layers, so resizing it confines everything at once. */
+#stage {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background: #000;
+  transform: translateZ(0);
+}
+
 #gl {
   position: fixed;
   inset: 0;
-  width: 100vw;
-  height: 100vh;
+  width: 100%;
+  height: 100%;
   display: block;
 }
 
@@ -437,6 +448,11 @@ textarea.textarea-lg {
 .playlist .tname.is-interlude { color: #c9b6ff; font-style: italic; }
 
 /* ============ OUTPUT WINDOW ============ */
+/* LED area controls (Schermo tab) */
+.led-row { align-items: center; gap: 4px; }
+.led-num { width: 64px; }
+.led-chk { display: flex; align-items: center; gap: 4px; margin-right: 6px; white-space: nowrap; }
+
 body.output { cursor: none; background: #000; }
 
 /* ---- Image overlay layer ---- */
@@ -467,8 +483,8 @@ body.output { cursor: none; background: #000; }
 .bg-video {
   position: fixed;
   inset: 0;
-  width: 100vw;
-  height: 100vh;
+  width: 100%;
+  height: 100%;
   object-fit: cover;
   z-index: 1;            /* above the WebGL canvas, below overlays */
   pointer-events: none;
@@ -479,8 +495,8 @@ body.output { cursor: none; background: #000; }
 .track-video {
   position: fixed;
   inset: 0;
-  width: 100vw;
-  height: 100vh;
+  width: 100%;
+  height: 100%;
   object-fit: contain;
   background: #000;
   z-index: 2;            /* main visual when a video track plays */

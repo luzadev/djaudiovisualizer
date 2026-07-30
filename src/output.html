@@ -8,6 +8,8 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body class="output">
+  <!-- LED-wall active area: every layer lives inside; black outside -->
+  <div id="stage">
   <canvas id="gl"></canvas>
 
   <!-- Video layer (VJ loop) that blends with the generated visuals -->
@@ -39,6 +41,7 @@
     <div class="big">🎛 In attesa dell'audio…</div>
     <div class="small">Usa il pannello di controllo sull'altro schermo</div>
   </div>
+  </div><!-- /#stage -->
 
   <script src="shaders.js"></script>
   <script src="effects.js"></script>

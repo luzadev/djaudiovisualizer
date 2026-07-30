@@ -83,7 +83,9 @@ function composeFrame() {
   recCtx.globalAlpha = 1;
   recCtx.globalCompositeOperation = 'source-over';
   recCtx.clearRect(0, 0, W, H);
-  recCtx.drawImage(canvas, 0, 0, W, H);
+  // Draw the canvas where it actually sits (the LED area may confine it).
+  const cr = canvas.getBoundingClientRect();
+  recCtx.drawImage(canvas, cr.x * sx, cr.y * sy, cr.width * sx, cr.height * sy);
 
   if (bgVideo.classList.contains('show') && bgVideo.readyState >= 2 && bgVideo.videoWidth) {
     recCtx.globalAlpha = parseFloat(getComputedStyle(bgVideo).opacity) || 1;
@@ -318,6 +320,19 @@ djv.onControl(async (m) => {
       djv.report({ type: 'autoVj', on: autoVj });
       break;
     case 'svg': loadCustomTexture(m.dataUrl); break;
+    case 'ledArea': {
+      // Confine the whole show to a W×H rectangle at X,Y (LED pixel mapping).
+      const st = $('#stage').style;
+      if (m.on && m.w > 0 && m.h > 0) {
+        st.left = (m.x || 0) + 'px'; st.top = (m.y || 0) + 'px';
+        st.width = m.w + 'px'; st.height = m.h + 'px';
+      } else {
+        st.left = st.top = '0px';
+        st.width = st.height = '';
+      }
+      viz.resize();
+      break;
+    }
     case 'recStart': startRecording(m); break;
     case 'recStop': stopRecording(m); break;
     case 'gain': audio.gain = m.value; break;

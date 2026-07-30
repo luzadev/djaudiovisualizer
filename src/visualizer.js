@@ -72,7 +72,11 @@ class Visualizer {
 
   resize() {
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const w = Math.floor(window.innerWidth * dpr), h = Math.floor(window.innerHeight * dpr);
+    // The canvas fills the #stage box (the LED active area), which is
+    // normally the whole window but can be a smaller mapping rectangle.
+    const cw = this.canvas.clientWidth || window.innerWidth;
+    const ch = this.canvas.clientHeight || window.innerHeight;
+    const w = Math.floor(cw * dpr), h = Math.floor(ch * dpr);
     if (this.canvas.width !== w || this.canvas.height !== h) { this.canvas.width = w; this.canvas.height = h; }
     this.gl.viewport(0, 0, w, h);
   }

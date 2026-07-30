@@ -1094,6 +1094,25 @@ $('#btn-display').addEventListener('click', () => {
 });
 $('#btn-fullscreen').addEventListener('click', () => djv.toggleOutputFullscreen());
 
+// ---- LED wall active area (pixel-mapping processors) ----
+// Persisted; re-sent whenever the output window (re)starts (see 'devices').
+let ledCfg = { on: false, w: 1024, h: 576, x: 0, y: 0 };
+try { ledCfg = Object.assign(ledCfg, JSON.parse(localStorage.getItem('ledarea') || '{}')); } catch (e) {}
+function ledSend() { send({ type: 'ledArea', on: ledCfg.on, w: ledCfg.w, h: ledCfg.h, x: ledCfg.x, y: ledCfg.y }); }
+function ledSave() { localStorage.setItem('ledarea', JSON.stringify(ledCfg)); ledSend(); }
+(function ledInit() {
+  $('#led-on').checked = ledCfg.on;
+  const fields = [['#led-w', 'w'], ['#led-h', 'h'], ['#led-x', 'x'], ['#led-y', 'y']];
+  fields.forEach(([sel, k]) => {
+    $(sel).value = ledCfg[k];
+    $(sel).addEventListener('change', (e) => {
+      ledCfg[k] = Math.max(0, parseInt(e.target.value || '0', 10) || 0);
+      ledSave();
+    });
+  });
+  $('#led-on').addEventListener('change', (e) => { ledCfg.on = e.target.checked; ledSave(); });
+})();
+
 // ---------------------------------------------------------------- recording
 let recOn = false, recTimer = null, recStartedAt = 0;
 function fmtTime(s) {
@@ -1371,6 +1390,9 @@ djv.onReport((m) => {
       }
       break;
     case 'devices': {
+      // The output reports its devices once at startup: good moment to push
+      // config the (possibly recreated) output window doesn't have yet.
+      if (ledCfg.on) ledSend();
       const sel = $('#device-select');
       const cur = sel.value;
       sel.innerHTML = '<option value="">— Input live (mic/line/BlackHole) —</option>';

@@ -344,6 +344,18 @@
           <button id="btn-fullscreen">⛶ Fullscreen</button>
         </div>
       </section>
+      <section class="span2">
+        <label>Area LED (pixel mapping)</label>
+        <div class="row led-row">
+          <label class="led-chk"><input type="checkbox" id="led-on" /> Attiva</label>
+          <input type="number" class="led-num" id="led-w" min="16" max="8192" step="1" title="Larghezza in px" /> ×
+          <input type="number" class="led-num" id="led-h" min="16" max="8192" step="1" title="Altezza in px" /> px @
+          <input type="number" class="led-num" id="led-x" min="0" max="8192" step="1" title="Posizione X in px" /> ,
+          <input type="number" class="led-num" id="led-y" min="0" max="8192" step="1" title="Posizione Y in px" />
+        </div>
+        <div class="hint-mini">Per processori LED con mapping 1:1: confina tutto l'output in un rettangolo
+          Larghezza×Altezza alla posizione X,Y sullo schermo (nero attorno). Es. wall 896×512 → 896 × 512 @ 0 , 0.</div>
+      </section>
     </div>
 
   </main>
