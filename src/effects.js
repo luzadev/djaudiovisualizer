@@ -71,7 +71,8 @@ const FAMILIES = [
   // Cinematic audio-light scenic families (shader indices 55-56): the live
   // waveform / spectrum drawn as beams of light with flares and bokeh.
   { name: 'Onda Luminosa', scale: 1.0 },
-  { name: 'Spettro Neon', scale: 1.0 }
+  { name: 'Spettro Neon', scale: 1.0 },
+  { name: 'Onda 3D', scale: 1.0 }
 ];
 
 // Palettes: low colour (a) -> high colour (b), plus optional hue-cycle/sat.

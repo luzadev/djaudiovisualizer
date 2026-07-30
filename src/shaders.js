@@ -596,8 +596,10 @@ vec3 scSupernova(vec2 uv) {
 float wamp(float xn) {
   float fx = clamp(xn, 0.0, 1.0) * 255.0;
   int i0 = int(floor(fx));
-  return abs(waveAt(i0)) * 0.5
-       + (abs(waveAt(min(i0 + 4, 255))) + abs(waveAt(max(i0 - 4, 0)))) * 0.25;
+  // linear interpolation avoids per-sample stair-steps in the curves
+  float a = mix(abs(waveAt(i0)), abs(waveAt(min(i0 + 1, 255))), fract(fx));
+  float b = mix(abs(waveAt(max(i0 - 5, 0))), abs(waveAt(min(i0 + 5, 255))), 0.5);
+  return a * 0.6 + b * 0.4;
 }
 // Soft out-of-focus dots drifting slowly (two layers are combined by callers).
 vec3 scBokeh(vec2 uv, float n, float th, float soft) {
@@ -693,6 +695,44 @@ vec3 scSpettro(vec2 uv) {
   return col;
 }
 
+// 3D silk ribbon (family 57): two bands of fine strands flowing across the
+// screen. Inside each band, iso-lines of the band coordinate s become the
+// strands: where the band folds thin they compress into dense moiré, where it
+// opens wide they separate — the wireframe-surface look of the reference.
+// Hue ramps across the band (warm crest -> cool belly, palette-shifted).
+vec3 scOnda3D(vec2 uv) {
+  vec3 col = vec3(0.0);
+  float xn = clamp(uv.x * 0.5 + 0.5, 0.0, 1.0);
+  float w = wamp(xn) * (0.5 + 0.8 * uBass * aMix);
+  vec3 hb = rgb2hsv(uColorB);
+  for (int L = 0; L < 2; L++) {
+    float fl = float(L);            // 0 = back ribbon (dim), 1 = front
+    float ph = fl * 2.7;
+    // centre curve: layered drifting sines + the live waveform wiggle
+    float yc = 0.16 * sin(uv.x * 2.1 + uT * 0.7 + ph)
+             + 0.09 * sin(uv.x * 4.7 - uT * 1.1 + ph * 1.7)
+             + 0.05 * sin(uv.x * 9.3 + uT * 1.9 + ph * 0.6)
+             + 0.45 * w * sin(uv.x * 6.0 - uT * 3.0 + ph);
+    // band thickness breathes and swells with the music
+    float th = max(0.10 + 0.07 * sin(uv.x * 3.3 + uT * 0.9 + ph * 2.1) + 0.14 * w, 0.025);
+    float s = (uv.y - yc) / th * 0.5 + 0.5;    // 0..1 across the band
+    if (s < -0.05 || s > 1.05) continue;
+    float in01 = smoothstep(0.0, 0.06, s) * smoothstep(1.0, 0.94, s);
+    // fine strands: iso-lines of s (thin when the band is folded tight)
+    float fr = abs(fract(s * 28.0) - 0.5) * 2.0;
+    float line = exp(-fr * fr * 9.0);
+    // brighter rims at both edges of the band, like the reference
+    float edge = 0.45 + 0.75 * pow(abs(s * 2.0 - 1.0), 2.0);
+    // hue ramp across the band: crest keeps the palette hue, the belly shifts
+    // the other way round the wheel (through magenta, like the reference)
+    vec3 sc = hsv2rgb(vec3(fract(hb.x - (1.0 - s) * 0.45), max(hb.y, 0.55), 1.0));
+    float amp = (0.5 + 0.9 * fl) * (0.7 + 0.5 * uLevel * aMix + 0.3 * uBeat * aMix);
+    col += sc * line * in01 * edge * amp;
+    col += sc * in01 * 0.05 * amp;             // faint fill so the band reads as a surface
+  }
+  return col;
+}
+
 vec3 fieldRGB(int f, vec2 uv) {
   if (f == 34) return scCielo(uv);
   if (f == 35) return scAurora(uv);
@@ -706,6 +746,7 @@ vec3 fieldRGB(int f, vec2 uv) {
   // 44-54 are the camera-interactive families (they never reach the shader).
   if (f == 55) return scOnda(uv);
   if (f == 56) return scSpettro(uv);
+  if (f == 57) return scOnda3D(uv);
   return scSupernova(uv); // f == 43
 }
 
