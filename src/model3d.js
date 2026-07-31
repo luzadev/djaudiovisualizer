@@ -664,10 +664,19 @@ class ModelSim {
         const k = ch._k;
         let tx = (V[i3] + (V[j3]-V[i3])*f)*k, ty = (V[i3+1] + (V[j3+1]-V[i3+1])*f)*k,
             tz = (V[i3+2] + (V[j3+2]-V[i3+2])*f)*k;
-        // safety net: the offset from the rest position may never exceed
-        // 1.2x the bone's rest length, whatever the source clip does — this
-        // keeps foreign clips from throwing the model out of the frame
-        if (ch._rl > 1e-6) {
+        if (ch._hips === undefined) {
+          const nn = this.skel.nodes[ch.node];
+          ch._hips = nn.name.split(':').pop().split('.').pop() === 'Hips';
+        }
+        if (ch._hips && ch._rl > 1e-6) {
+          // Hips: kill the horizontal root motion entirely (it was cancelled
+          // by the framing compensation anyway, and a hard clamp made it
+          // jerk left/right); the vertical bounce saturates smoothly.
+          const max = ch._rl*0.8;
+          tx = ch._rest[0]; tz = ch._rest[2];
+          ty = ch._rest[1] + max*Math.tanh((ty - ch._rest[1])/max);
+        } else if (ch._rl > 1e-6) {
+          // other bones (same-rig clips only): sane hard limit
           const dx = tx - ch._rest[0], dy = ty - ch._rest[1], dz = tz - ch._rest[2];
           const d = Math.hypot(dx, dy, dz), max = ch._rl*1.2;
           if (d > max) {
