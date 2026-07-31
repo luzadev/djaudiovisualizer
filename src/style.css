@@ -1,5 +1,9 @@
 * { box-sizing: border-box; }
 
+/* Dark native controls: on Windows the select popup/scrollbars render WHITE
+   without this, with our light text on top -> unreadable dropdowns. */
+:root { color-scheme: dark; }
+
 html, body {
   margin: 0;
   padding: 0;
@@ -749,7 +753,8 @@ button.active {
 }
 button.wide { width: 100%; }
 
-select { appearance: none; }
+select { appearance: none; background-color: #1a1a26; }
+select option { background: #1a1a26; color: #e8e8f0; }
 
 .chk {
   display: flex !important;
