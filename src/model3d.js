@@ -476,6 +476,7 @@ class ModelSim {
     this.libAnims = [];       // library clips bound to the current skeleton
     this.clipFilter = null;   // Set of allowed clip names (empty/null = all)
     this.manualBpm = 0;       // 0 = follow the detected beat
+    this.armSpread = 0;       // radians: swing the arms away from the torso
     this._upload(torusKnot());
   }
 
@@ -850,6 +851,20 @@ class ModelSim {
               const d = v3norm(m3ApplyT(m3Mul(pr, r3), tgt));
               r3 = m3Mul(r3, m3FromTo(cl, d));
             }
+          }
+        }
+        // arm spread: clips authored for the standard mannequin make chunky
+        // models self-intersect — rotate the upper arms outward (world Z,
+        // the character faces the camera) by the per-model amount
+        if (anim && this.armSpread) {
+          const b2 = base(n.name);
+          if (b2 === 'LeftArm' || b2 === 'RightArm') {
+            const sa = b2 === 'LeftArm' ? this.armSpread : -this.armSpread;
+            const cs = Math.cos(sa), sn = Math.sin(sa);
+            const Rz = [cs, sn, 0, -sn, cs, 0, 0, 0, 1];
+            const pr = parentWorld ? m4Rot3(parentWorld) : [1,0,0, 0,1,0, 0,0,1];
+            const prT = [pr[0],pr[3],pr[6], pr[1],pr[4],pr[7], pr[2],pr[5],pr[8]];
+            r3 = m3Mul(m3Mul(m3Mul(prT, Rz), pr), r3);
           }
         }
         const s = n.s;

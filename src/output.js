@@ -323,6 +323,7 @@ djv.onControl(async (m) => {
     case 'modelBg': viz.modelBg = m.mode || 'gradient'; break;
     case 'glbAnims': viz.setClipFilter(m.names || []); break;
     case 'modelBpm': viz.setManualBpm(m.bpm || 0); break;
+    case 'modelSpread': viz.setArmSpread(m.deg || 0); break;
     case 'animAdd':
       // extra animation GLB for the dance library
       try {

@@ -97,6 +97,7 @@ class Visualizer {
       });
       if (this._clipFilter) this.model3d.clipFilter = this._clipFilter;
       if (this._manualBpm) this.model3d.manualBpm = this._manualBpm;
+      if (this._armSpread) this.model3d.armSpread = this._armSpread;
     }
     if (this._pendingGlb) { this.model3d.setModel(this._pendingGlb); this._pendingGlb = null; }
     return this.model3d;
@@ -128,6 +129,11 @@ class Visualizer {
   setManualBpm(bpm) {
     this._manualBpm = bpm || 0;
     if (this.model3d) this.model3d.manualBpm = this._manualBpm;
+  }
+
+  setArmSpread(deg) {
+    this._armSpread = (deg || 0)*Math.PI/180;
+    if (this.model3d) this.model3d.armSpread = this._armSpread;
   }
 
   // Upload a custom source (HTMLImageElement / HTMLCanvasElement) for the

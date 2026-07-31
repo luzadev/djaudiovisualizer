@@ -162,6 +162,7 @@ function glbSend() {
   glbAnimFiles.forEach(p => send({ type: 'animAdd', path: p }));
   send({ type: 'glbAnims', names: glbClipSel });
   send({ type: 'modelBpm', bpm: glbBpm });
+  spreadSend();
 }
 function renderGlbClips(names) {
   const box = $('#glb-anims');
@@ -215,6 +216,8 @@ function renderGlbModels() {
       localStorage.setItem('glb3d', glbPath);
       send({ type: 'glb', path: glbPath });
       glbLabel(mo.name);
+      spreadUi();
+      spreadSend();
       renderGlbModels();
     });
     const del = document.createElement('button');
@@ -231,6 +234,16 @@ function renderGlbModels() {
     box.appendChild(row);
   });
 }
+// Arm spread, saved per model path (chunky models need more room).
+let glbSpreadMap = {};
+try { glbSpreadMap = JSON.parse(localStorage.getItem('glbspread') || '{}'); } catch (e) {}
+function spreadFor(p) { return glbSpreadMap[p] || 0; }
+function spreadUi() {
+  const v = spreadFor(glbPath);
+  $('#glb-spread').value = v;
+  $('#glb-spread-val').textContent = v + '°';
+}
+function spreadSend() { send({ type: 'modelSpread', deg: spreadFor(glbPath) }); }
 function glbLabel(name) {
   $('#glb-name').textContent = name
     ? '🧊 ' + name + ' — attiva la famiglia “Modello 3D” per vederlo.'
@@ -258,6 +271,13 @@ $('#glb-bg').addEventListener('change', (e) => {
   send({ type: 'modelBg', mode: glbBg });
 });
 renderGlbClips([]);
+spreadUi();
+$('#glb-spread').addEventListener('input', (e) => {
+  const v = parseInt(e.target.value, 10) || 0;
+  if (glbPath) { glbSpreadMap[glbPath] = v; localStorage.setItem('glbspread', JSON.stringify(glbSpreadMap)); }
+  $('#glb-spread-val').textContent = v + '°';
+  send({ type: 'modelSpread', deg: v });
+});
 $('#btn-anim-load').addEventListener('click', () => $('#anim-input').click());
 $('#anim-input').addEventListener('change', async (e) => {
   for (const f of [...e.target.files]) {
@@ -357,6 +377,7 @@ $('#glb-input').addEventListener('change', async (e) => {
   glbSend();
   glbLabel(f.name.replace(/\.fbx$/i, '.glb'));
   addGlbModel(f.name.replace(/\.fbx$/i, '.glb'), p);
+  spreadUi();
 });
 
 // --- Effect sequence (playlist of effects with auto-cycle) ---
