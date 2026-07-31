@@ -463,6 +463,7 @@ class ModelSim {
       // rest-pose joint matrices, then a CPU-skinned vertex sample for the
       // bounding box (skinned vertices live in mesh space until deformed)
       this.restJoints = this._computeJoints(null);
+      this._hipsRest = this._hipsW ? this._hipsW.slice() : null;
       const J = this.restJoints;
       let mn = [1e9,1e9,1e9], mx = [-1e9,-1e9,-1e9];
       model.prims.forEach(p => {
@@ -556,7 +557,18 @@ class ModelSim {
         o.r = [q[0]/l, q[1]/l, q[2]/l, q[3]/l];
       } else {
         const V = ch.vals, i3 = i*3, j3 = Math.min(i3+3, V.length-3);
-        o.t = [V[i3] + (V[j3]-V[i3])*f, V[i3+1] + (V[j3+1]-V[i3+1])*f, V[i3+2] + (V[j3+2]-V[i3+2])*f];
+        // Clips merged from other FBX files can carry translations in a
+        // different unit (cm vs m): rescale against the node's rest pose.
+        if (ch._k === undefined) {
+          const rest = this.skel.nodes[ch.node].t;
+          const rl = Math.hypot(rest[0], rest[1], rest[2]);
+          const v0 = Math.hypot(V[0], V[1], V[2]);
+          const ratio = rl > 1e-6 && v0 > 1e-6 ? v0/rl : 1;
+          ch._k = (ratio > 3 || ratio < 0.33) ? rl/v0 : 1;
+        }
+        const k = ch._k;
+        o.t = [(V[i3] + (V[j3]-V[i3])*f)*k, (V[i3+1] + (V[j3+1]-V[i3+1])*f)*k,
+               (V[i3+2] + (V[j3+2]-V[i3+2])*f)*k];
       }
     }
     return out;
@@ -682,6 +694,7 @@ class ModelSim {
       }
       const world = parentWorld ? m4mul(parentWorld, local) : local;
       worlds[ni] = world;
+      if (base(n.name) === 'Hips') this._hipsW = [world[12], world[13], world[14]];
       n.children.forEach(c => visit(c, world));
     };
     sk.roots.forEach(r => visit(r, null));
@@ -907,12 +920,19 @@ class ModelSim {
     const dist = this.radius*2.6;
     // live body-driven skinning? else: animation clip or procedural dance
     const skinnedLive = this.skel && pose && pose.skinTargets;
-    let curJoints = null, danceY = 0;
+    let curJoints = null, danceX = 0, danceY = 0, danceZ = 0;
     if (this.skel) {
       if (skinnedLive) {
         curJoints = this._computeJoints(pose.skinTargets);
       } else if (this.anims) {
         curJoints = this._computeJoints(null, this._danceDirector(timeSec, speed, beat));
+        // keep the dancer framed: cancel the clip's root motion horizontally,
+        // keep a taste of the vertical bounce
+        if (this._hipsRest && this._hipsW) {
+          danceX = (this._hipsRest[0] - this._hipsW[0]);
+          danceY = (this._hipsRest[1] - this._hipsW[1])*0.6;
+          danceZ = (this._hipsRest[2] - this._hipsW[2]);
+        }
       } else {
         const dance = this._danceTargets(timeSec, beat, bass);
         curJoints = this._computeJoints(dance.targets);
@@ -930,7 +950,7 @@ class ModelSim {
     const sq = pose && !skinnedLive ? Math.max(0.7, Math.min(1.3, pose.squash || 1)) : 1;
     const world = skinnedLive
       ? [(pose.track ? pose.track[0] : 0)*this.radius, (pose.track ? pose.track[1] : 0)*this.radius, 0]
-      : (pose ? [pose.leanX*this.radius*1.6, (pose.hopY || 0)*this.radius, 0] : [0, danceY, 0]);
+      : (pose ? [pose.leanX*this.radius*1.6, (pose.hopY || 0)*this.radius, 0] : [danceX, danceY, danceZ]);
     const model = m4mul(m4mul(m4mul(m4trans(world), m4rotY(yaw)),
       m4scale3(scale/Math.sqrt(sq), scale*sq, scale/Math.sqrt(sq))),
       m4trans([-this.center[0], -this.center[1], -this.center[2]]));
