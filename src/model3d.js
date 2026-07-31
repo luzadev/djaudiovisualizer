@@ -346,7 +346,10 @@ function parseGLB(buf) {
         });
       let dur = 0;
       channels.forEach(c => { const e = c.times[c.times.length-1]; if (e > dur) dur = e; });
-      return { name: a.name || 'clip', channels, dur: Math.max(0.1, dur) };
+      const name = a.name || 'clip';
+      // expressive/half-time choreographies: one count every TWO beats
+      const pace = /thriller|break|flair|freeze|spin|moonwalk/i.test(name) ? 0.5 : 1;
+      return { name, channels, dur: Math.max(0.1, dur), pace };
     });
   }
   return { prims, min, max, skel: hasSkin ? skel : null, anims };
@@ -582,11 +585,15 @@ class ModelSim {
   _beatClock(t, beat) {
     const db = this._db || (this._db = { n: 0, last: -1, period: 0.5, prevBeat: 0 });
     if (beat > 0.6 && db.prevBeat <= 0.6) {
-      if (db.last >= 0) {
-        const iv = t - db.last;
-        if (iv > 0.24 && iv < 1.3) db.period = iv;
+      // refractory window: energetic tracks fire on kick AND snare/hats,
+      // which doubled the tempo — ignore edges closer than 60% of a period
+      if (db.last < 0 || t - db.last >= db.period*0.6) {
+        if (db.last >= 0) {
+          const iv = t - db.last;
+          if (iv > 0.24 && iv < 1.3) db.period = iv;
+        }
+        db.last = t; db.n++;
       }
-      db.last = t; db.n++;
     } else if (db.last < 0 || t - db.last > db.period*1.6) {
       db.last = db.last < 0 ? t : db.last + db.period;
       db.n++;
@@ -627,7 +634,8 @@ class ModelSim {
     d.sb += dt*rate;
     d.sb += (tgt - d.sb)*k;
     if (Math.abs(tgt - d.sb) > 1.5) d.sb = tgt; // hard resync if way off
-    const cur = this._sampleAnim(this.anims[d.clip], d.sb*SPB);
+    const cur = this._sampleAnim(this.anims[d.clip],
+      d.sb*SPB*(this.anims[d.clip].pace || 1));
     const FADE = 0.45;
     const f = (t - d.lastSwitch)/FADE;
     if (f >= 1 || d.prev < 0) return cur;
@@ -635,7 +643,8 @@ class ModelSim {
     const ptgt = Math.max(0, (bc.n - d.pn0) + (bc.p - d.pp0) + LEAD*rate);
     d.psb += dt*rate;
     d.psb += (ptgt - d.psb)*k;
-    const old = this._sampleAnim(this.anims[d.prev], d.psb*SPB);
+    const old = this._sampleAnim(this.anims[d.prev],
+      d.psb*SPB*(this.anims[d.prev].pace || 1));
     const w = f*f*(3 - 2*f);
     for (const ni in old) {
       const o = old[ni], c = cur[ni] || (cur[ni] = {});
