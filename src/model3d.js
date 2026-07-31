@@ -79,6 +79,13 @@ function m3FromTo(a, b) {
           -cz+cy*cx*k, d+cy*cy*k, cx+cy*cz*k,
           cy+cz*cx*k, -cx+cz*cy*k, d+cz*cz*k];
 }
+// rotation of `ang` radians around a unit axis (Rodrigues), column-major mat3
+function m3AxisAngle(ax, ang) {
+  const [x, y, z] = ax, c = Math.cos(ang), s = Math.sin(ang), t = 1 - c;
+  return [t*x*x + c, t*x*y + s*z, t*x*z - s*y,
+          t*x*y - s*z, t*y*y + c, t*y*z + s*x,
+          t*x*z + s*y, t*y*z - s*x, t*z*z + c];
+}
 // mat4 rotation part with the scale stripped (for solving in world frames)
 function m4Rot3(m) {
   const n = (x,y,z) => { const l = Math.hypot(x,y,z) || 1; return [x/l, y/l, z/l]; };
@@ -543,6 +550,14 @@ class ModelSim {
       // bounding box (skinned vertices live in mesh space until deformed)
       this.restJoints = this._computeJoints(null);
       this._hipsRest = this._hipsW ? this._hipsW.slice() : null;
+      // the character's outward (left) axis from the rest shoulder line
+      this._leftAxis = null;
+      if (this._armLW && this._armRW) {
+        const lx = this._armLW[0]-this._armRW[0], ly = this._armLW[1]-this._armRW[1],
+              lz = this._armLW[2]-this._armRW[2];
+        const ll = Math.hypot(lx, ly, lz);
+        if (ll > 1e-6) this._leftAxis = [lx/ll, ly/ll, lz/ll];
+      }
       const J = this.restJoints;
       let mn = [1e9,1e9,1e9], mx = [-1e9,-1e9,-1e9];
       model.prims.forEach(p => {
@@ -858,13 +873,31 @@ class ModelSim {
         // the character faces the camera) by the per-model amount
         if (anim && this.armSpread) {
           const b2 = base(n.name);
-          if (b2 === 'LeftArm' || b2 === 'RightArm') {
-            const sa = b2 === 'LeftArm' ? this.armSpread : -this.armSpread;
-            const cs = Math.cos(sa), sn = Math.sin(sa);
-            const Rz = [cs, sn, 0, -sn, cs, 0, 0, 0, 1];
-            const pr = parentWorld ? m4Rot3(parentWorld) : [1,0,0, 0,1,0, 0,0,1];
-            const prT = [pr[0],pr[3],pr[6], pr[1],pr[4],pr[7], pr[2],pr[5],pr[8]];
-            r3 = m3Mul(m3Mul(m3Mul(prT, Rz), pr), r3);
+          if ((b2 === 'LeftArm' || b2 === 'RightArm') && this._leftAxis) {
+            // push the arm toward the character's outward side from its
+            // CURRENT direction: works whether the pose hangs the arms down
+            // or bends them forward (a fixed axis dies on forward poses)
+            let ci = -1;
+            const cb = b2 === 'LeftArm' ? 'LeftForeArm' : 'RightForeArm';
+            for (const c of n.children) if (base(sk.nodes[c].name) === cb) { ci = c; break; }
+            if (ci >= 0) {
+              const pr = parentWorld ? m4Rot3(parentWorld) : [1,0,0, 0,1,0, 0,0,1];
+              const cl = v3norm(sk.nodes[ci].t);
+              const wr = m3Mul(pr, r3);
+              const dir = [wr[0]*cl[0]+wr[3]*cl[1]+wr[6]*cl[2],
+                           wr[1]*cl[0]+wr[4]*cl[1]+wr[7]*cl[2],
+                           wr[2]*cl[0]+wr[5]*cl[1]+wr[8]*cl[2]];
+              const la = this._leftAxis;
+              const out = b2 === 'LeftArm' ? la : [-la[0], -la[1], -la[2]];
+              const ax = [dir[1]*out[2]-dir[2]*out[1], dir[2]*out[0]-dir[0]*out[2],
+                          dir[0]*out[1]-dir[1]*out[0]];
+              const al = Math.hypot(ax[0], ax[1], ax[2]);
+              if (al > 1e-4) {
+                const Rf = m3AxisAngle([ax[0]/al, ax[1]/al, ax[2]/al], this.armSpread);
+                const prT = [pr[0],pr[3],pr[6], pr[1],pr[4],pr[7], pr[2],pr[5],pr[8]];
+                r3 = m3Mul(m3Mul(m3Mul(prT, Rf), pr), r3);
+              }
+            }
           }
         }
         const s = n.s;
@@ -874,7 +907,11 @@ class ModelSim {
       }
       const world = parentWorld ? m4mul(parentWorld, local) : local;
       worlds[ni] = world;
-      if (base(n.name) === 'Hips') this._hipsW = [world[12], world[13], world[14]];
+      const bn = base(n.name);
+      if (bn === 'Hips') this._hipsW = [world[12], world[13], world[14]];
+      else if (bn === 'LeftArm') this._armLW = [world[12], world[13], world[14]];
+      else if (bn === 'RightArm') this._armRW = [world[12], world[13], world[14]];
+      else if (bn === 'LeftForeArm') this._foreLW = [world[12], world[13], world[14]];
       n.children.forEach(c => visit(c, world));
     };
     sk.roots.forEach(r => visit(r, null));
