@@ -157,7 +157,17 @@ function glbLabel(name) {
     : 'Il modello ruota a tempo di musica nella famiglia “Modello 3D”.';
 }
 if (glbPath) glbLabel(glbPath.split('/').pop());
+// every shader family can be a backdrop too (fluid/interactive/3D excluded:
+// fluids are the explicit options above, the others can't render as layers)
+EFFECTS.families.forEach((name, fi) => {
+  if (/^Interattivo|^Modello 3D|^Fluido/.test(name)) return;
+  const o = document.createElement('option');
+  o.value = 'fam:' + fi;
+  o.textContent = name;
+  $('#glb-bg').appendChild(o);
+});
 $('#glb-bg').value = glbBg;
+if (!$('#glb-bg').value) { glbBg = 'gradient'; $('#glb-bg').value = 'gradient'; }
 $('#glb-bg').addEventListener('change', (e) => {
   glbBg = e.target.value;
   localStorage.setItem('glbbg', glbBg);

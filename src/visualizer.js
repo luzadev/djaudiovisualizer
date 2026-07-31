@@ -114,9 +114,21 @@ class Visualizer {
     if (e.isModel3d && window.ModelSim) {
       if (!this.model3d) this.model3d = new window.ModelSim(gl);
       if (this._pendingGlb) { this.model3d.setModel(this._pendingGlb); this._pendingGlb = null; }
-      // optional fluid backdrop behind the model (modelBg: ink/fire/ring/...)
+      // optional backdrop behind the model: a fluid mode ('ink'/'fire'/...)
+      // or any shader family ('fam:<index>'), tinted with the active palette
       const bg = this.modelBg || 'gradient';
-      if (bg !== 'gradient' && window.FluidSim) {
+      if (bg.indexOf('fam:') === 0 && window.EFFECTS) {
+        const fi = parseInt(bg.slice(4), 10);
+        const base = window.EFFECTS.list.find(x => x.family === fi && !x.isFluid && !x.isInteractive && !x.isModel3d);
+        if (base) {
+          const bgEff = Object.assign({}, base, { colorA: e.colorA, colorB: e.colorB,
+            hueBase: e.hueBase, hueCycle: e.hueCycle, sat: e.sat, audioMix: e.audioMix });
+          this._renderUber(timeSec, audio, bgEff);
+          this.model3d.render(timeSec, audio, e, this.canvas, null, true);
+          return;
+        }
+      }
+      if (bg !== 'gradient' && bg.indexOf('fam:') !== 0 && window.FluidSim) {
         if (!this.fluid) this.fluid = new window.FluidSim(gl);
         this.fluid.render(timeSec, audio, Object.assign({}, e, { fluidMode: bg }), this.canvas);
         this.model3d.render(timeSec, audio, e, this.canvas, null, true);
@@ -142,6 +154,12 @@ class Visualizer {
       this.fluid.render(timeSec, audio, e, this.canvas);
       return;
     }
+    this._renderUber(timeSec, audio, e);
+  }
+
+  // The parametric uber-shader pass (also used as a backdrop for the model).
+  _renderUber(timeSec, audio, e) {
+    const gl = this.gl, u = this.u;
     gl.useProgram(this.program);
     gl.bindBuffer(gl.ARRAY_BUFFER, this.vbo);
     gl.enableVertexAttribArray(this.aPos);
