@@ -895,6 +895,27 @@ kbd {
 }
 .glb-models .hint-mini { grid-column: 1 / -1; }
 
+/* Projection-mapping guide */
+.map-guide { margin-top: 10px; font-size: 11.5px; }
+.map-guide summary {
+  cursor: pointer;
+  opacity: 0.8;
+  padding: 6px 8px;
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 9px;
+}
+.map-guide summary:hover { background: rgba(255,255,255,0.07); }
+.map-guide[open] summary { border-radius: 9px 9px 0 0; background: rgba(255,255,255,0.05); }
+.map-guide .mg-body {
+  border: 1px solid rgba(255,255,255,0.1);
+  border-top: none;
+  border-radius: 0 0 9px 9px;
+  padding: 4px 12px;
+  line-height: 1.55;
+  opacity: 0.85;
+}
+.map-guide .mg-body p { margin: 7px 0; }
+
 /* Projection-mapping zone list */
 .map-zone {
   display: flex;

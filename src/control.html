@@ -216,10 +216,34 @@
           <button id="map-add-img">➕ Zona Immagine…</button>
           <input type="file" id="map-img-input" accept="image/*" hidden />
         </div>
-        <div class="hint-mini">Ogni zona è un quadrilatero proiettato: con “Modifica zone” trascini i
-          4 angoli (o l'intera zona) direttamente sull'output guardando la superficie reale.
-          Le zone <b>Visual</b> mostrano l'effetto live (anche solo una porzione, per wall multi-pannello);
-          le zone <b>Immagine</b> fanno corner-pin di un'immagine su un oggetto. Fuori dalle zone: nero.</div>
+        <details class="map-guide">
+          <summary>📖 Guida rapida alla mappatura</summary>
+          <div class="mg-body">
+            <p><b>Cos'è</b> — proietti i visual (o immagini) solo su <b>zone</b> dello schermo:
+            quadrilateri deformabili con prospettiva corretta, per mappare pannelli LED,
+            oggetti e superfici inclinate. Fuori dalle zone: nero.</p>
+            <p><b>1. Attiva</b> — l'output passa in modalità mappatura.</p>
+            <p><b>2. Crea le zone</b> — <b>➕ Zona Visual</b> mostra l'effetto live in corso
+            (qualsiasi famiglia, anche il ballerino 3D); <b>➕ Zona Immagine</b> incolla
+            un'immagine fissa su una superficie (corner-pin).</p>
+            <p><b>3. Posiziona</b> — spunta <b>Modifica zone</b>: sull'output compaiono le
+            maniglie. Trascina i <b>4 angoli</b> per adattare la zona alla superficie reale
+            (guardando la proiezione!), oppure clicca <b>dentro</b> la zona per spostarla
+            intera. La zona selezionata ha le maniglie azzurre. Finito? Togli la spunta.</p>
+            <p><b>Opzioni per zona</b>:</p>
+            <p>· <b>Nome</b> — etichetta libera ("Pannello SX", "Cubo"…)<br/>
+            · <b>Porzione</b> (solo Visual) — quale ritaglio del visual mostrare:
+            X%, Y% di origine + Larghezza%×Altezza%. Es. due pannelli affiancati:
+            zona A <i>0, 0, 50×100</i> e zona B <i>50, 0, 50×100</i> → il visual
+            continua da un pannello all'altro<br/>
+            · <b>Slider</b> — opacità della zona (le zone più in basso nella lista
+            coprono quelle sopra dove si sovrappongono)<br/>
+            · <b>✕</b> — elimina la zona</p>
+            <p><b>Note</b> — tutto è salvato automaticamente e rientra nelle registrazioni
+            MP4. Le zone Visual seguono l'effetto attivo: cambi preset e cambia il
+            contenuto di tutte le zone.</p>
+          </div>
+        </details>
       </section>
     </div>
 
