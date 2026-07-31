@@ -595,7 +595,7 @@ class ModelSim {
     // linear phase, allowed to run past 1 while waiting for the next beat:
     // motion must never stall (the callers smooth any re-sync jumps)
     const p = db.last >= 0 ? Math.max(0, (t - db.last)/db.period) : 0;
-    return { n: db.n, p };
+    return { n: db.n, p, period: db.period };
   }
 
   // Dance director for multi-clip GLBs: the clip timeline is PHASE-LOCKED to
@@ -616,17 +616,24 @@ class ModelSim {
       d.clip = next; d.n0 = bc.n; d.p0 = bc.p; d.sb = 0; d.lastSwitch = t;
     }
     const SPB = 0.5*speed;   // clip-seconds per music beat
-    // fluid chase of the beat-locked timeline: absorbs metronome re-syncs
-    // without the stop-and-go feel of hard phase clamping
-    const k = 1 - Math.exp(-dt*9);
-    const tgt = Math.max(0, (bc.n - d.n0) + (bc.p - d.p0));
+    // Feed-forward + soft correction: the timeline advances by itself at the
+    // metronome rate (zero structural lag — a pure follower trailed the beat
+    // by its time constant), the follower only corrects the drift. LEAD
+    // compensates beat-detection/display latency.
+    const LEAD = 0.05;
+    const rate = 1/bc.period;                  // beats per second
+    const k = 1 - Math.exp(-dt*4);
+    const tgt = Math.max(0, (bc.n - d.n0) + (bc.p - d.p0) + LEAD*rate);
+    d.sb += dt*rate;
     d.sb += (tgt - d.sb)*k;
+    if (Math.abs(tgt - d.sb) > 1.5) d.sb = tgt; // hard resync if way off
     const cur = this._sampleAnim(this.anims[d.clip], d.sb*SPB);
     const FADE = 0.45;
     const f = (t - d.lastSwitch)/FADE;
     if (f >= 1 || d.prev < 0) return cur;
     // crossfade with the previous move (same beat-locked, chased timeline)
-    const ptgt = Math.max(0, (bc.n - d.pn0) + (bc.p - d.pp0));
+    const ptgt = Math.max(0, (bc.n - d.pn0) + (bc.p - d.pp0) + LEAD*rate);
+    d.psb += dt*rate;
     d.psb += (ptgt - d.psb)*k;
     const old = this._sampleAnim(this.anims[d.prev], d.psb*SPB);
     const w = f*f*(3 - 2*f);
