@@ -17,6 +17,7 @@
     <button data-tab="audio" class="active">🎵 Audio</button>
     <button data-tab="playlist">🎶 Playlist</button>
     <button data-tab="effetti">🌀 Effetti</button>
+    <button data-tab="anim3d">🧊 Animazioni 3D</button>
     <button data-tab="pad">🎹 Pad</button>
     <button data-tab="immagini">🖼 Immagini</button>
     <button data-tab="testo">🔤 Testo</button>
@@ -127,33 +128,6 @@
         <button id="btn-svg-load" class="wide">📂 Carica un SVG/immagine…</button>
         <input type="file" id="svg-input" accept="image/svg+xml,image/*" hidden />
         <div class="hint-mini">Scegli una sagoma → diventa un effetto reattivo. Per cambiare colori/stile filtra la libreria su “SVG/Immagine”.</div>
-        <label>Modello 3D (GLB)</label>
-        <button id="btn-glb-load" class="wide">🧊 Carica un modello .glb…</button>
-        <input type="file" id="glb-input" accept=".glb" hidden />
-        <div class="hint-mini" id="glb-name">Il modello ruota a tempo di musica nella famiglia “Modello 3D”.</div>
-        <label>Sfondo Modello 3D</label>
-        <select id="glb-bg">
-          <option value="gradient">Gradiente</option>
-          <option value="ink">Fluido</option>
-          <option value="fire">Fluido Fuoco</option>
-          <option value="ring">Fluido Anello</option>
-          <option value="vortex">Fluido Vortici</option>
-          <option value="wave">Fluido Onda</option>
-          <!-- tutte le altre famiglie vengono aggiunte da control.js -->
-        </select>
-        <label>Repertorio del ballerino</label>
-        <div id="glb-anims" class="av-fams"></div>
-        <button id="btn-anim-load" class="wide">💃 Aggiungi animazioni (.fbx / .glb)…</button>
-        <input type="file" id="anim-input" accept=".fbx,.glb" multiple hidden />
-        <label>BPM ballerino <span id="glb-bpm-val">auto</span></label>
-        <div class="row led-row">
-          <input type="number" class="led-num" id="glb-bpm" min="0" max="220" step="1" value="0"
-                 title="0 = automatico dal beat rilevato" />
-          <button id="glb-tap">👏 TAP</button>
-        </div>
-        <div class="hint-mini">Spunta le mosse che il regista può usare (nessuna spuntata = tutte).
-          Le animazioni extra arrivano da Mixamo: .glb diretti, .fbx convertiti al volo (serve Blender).
-          BPM: 0 = segue il beat; oppure scrivilo o battilo col TAP.</div>
       </section>
 
       <section class="span2" id="effect-seq-section">
@@ -175,6 +149,42 @@
     </div>
 
     <!-- ============ PAD ============ -->
+    <!-- ============ ANIMAZIONI 3D ============ -->
+    <div class="tab-panel" data-tab="anim3d">
+      <section class="span2">
+        <label>Modello 3D (GLB)</label>
+        <button id="btn-glb-load" class="wide">🧊 Carica un modello .glb…</button>
+        <input type="file" id="glb-input" accept=".glb" hidden />
+        <div class="hint-mini" id="glb-name">Il modello ruota e balla a tempo di musica nella famiglia “Modello 3D”;
+          con la camera lo comandi in “Interattivo Avatar”.</div>
+        <label>Sfondo</label>
+        <select id="glb-bg">
+          <option value="gradient">Gradiente</option>
+          <option value="ink">Fluido</option>
+          <option value="fire">Fluido Fuoco</option>
+          <option value="ring">Fluido Anello</option>
+          <option value="vortex">Fluido Vortici</option>
+          <option value="wave">Fluido Onda</option>
+          <!-- tutte le altre famiglie vengono aggiunte da control.js -->
+        </select>
+      </section>
+      <section class="span2">
+        <label>Repertorio del ballerino</label>
+        <div id="glb-anims" class="av-fams"></div>
+        <button id="btn-anim-load" class="wide">💃 Aggiungi animazioni (.fbx / .glb)…</button>
+        <input type="file" id="anim-input" accept=".fbx,.glb" multiple hidden />
+        <label>BPM ballerino <span id="glb-bpm-val">auto</span></label>
+        <div class="row led-row">
+          <input type="number" class="led-num" id="glb-bpm" min="0" max="220" step="1" value="0"
+                 title="0 = automatico dal beat rilevato" />
+          <button id="glb-tap">👏 TAP</button>
+        </div>
+        <div class="hint-mini">Spunta le mosse che il regista può usare (nessuna spuntata = tutte).
+          Le animazioni extra arrivano da Mixamo: .glb diretti, .fbx convertiti al volo (serve Blender).
+          BPM: 0 = segue il beat; oppure scrivilo o battilo col TAP.</div>
+      </section>
+    </div>
+
     <div class="tab-panel" data-tab="pad">
       <section class="span2">
         <label>Pad — 20 brani al volo (5×4, salvati automaticamente)</label>
