@@ -187,7 +187,7 @@ function readAccessor(json, bin, idx) {
   return { data: out, acc };
 }
 
-function parseGLB(buf) {
+function splitGLB(buf) {
   const dv = new DataView(buf);
   if (dv.getUint32(0, true) !== 0x46546C67) throw new Error('non è un file GLB');
   let off = 12, json = null, bin = null;
@@ -199,6 +199,36 @@ function parseGLB(buf) {
     off += 8 + len + (len % 4 ? 4 - len % 4 : 0);
   }
   if (!json || !bin) throw new Error('GLB incompleto');
+  return { json, bin };
+}
+
+const PACE_RE = /thriller|break|flair|freeze|spin|moonwalk/i;
+
+// Parse a skeleton-only GLB as an animation LIBRARY: clips whose channels are
+// keyed by bone base-name, bindable to any mixamorig-style rig.
+function parseAnimLib(buf) {
+  const { json, bin } = splitGLB(buf);
+  if (!json.animations || !json.animations.length) throw new Error('nessuna animazione nel GLB');
+  const nodeBase = json.nodes.map(n => (n.name || '').split(':').pop().split('.').pop());
+  return json.animations.map(a => {
+    const channels = a.channels
+      .filter(ch => ch.target.node != null &&
+        (ch.target.path === 'rotation' || ch.target.path === 'translation'))
+      .map(ch => {
+        const s = a.samplers[ch.sampler];
+        return { bone: nodeBase[ch.target.node], path: ch.target.path,
+          times: readAccessor(json, bin, s.input).data,
+          vals: readAccessor(json, bin, s.output).data };
+      });
+    let dur = 0;
+    channels.forEach(c => { const e = c.times[c.times.length-1]; if (e > dur) dur = e; });
+    const name = a.name || 'clip';
+    return { name, channels, dur: Math.max(0.1, dur), pace: PACE_RE.test(name) ? 0.5 : 1 };
+  });
+}
+
+function parseGLB(buf) {
+  const { json, bin } = splitGLB(buf);
 
   // node table (hierarchy kept for skinning) + world transforms
   const nodesInfo = json.nodes.map((n, i) => ({
@@ -348,8 +378,7 @@ function parseGLB(buf) {
       channels.forEach(c => { const e = c.times[c.times.length-1]; if (e > dur) dur = e; });
       const name = a.name || 'clip';
       // expressive/half-time choreographies: one count every TWO beats
-      const pace = /thriller|break|flair|freeze|spin|moonwalk/i.test(name) ? 0.5 : 1;
-      return { name, channels, dur: Math.max(0.1, dur), pace };
+      return { name, channels, dur: Math.max(0.1, dur), pace: PACE_RE.test(name) ? 0.5 : 1 };
     });
   }
   return { prims, min, max, skel: hasSkin ? skel : null, anims };
@@ -442,7 +471,49 @@ class ModelSim {
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);
     this.meshes = null;
     this.loadError = '';
+    this.animLib = null;      // bone-name clips (bundled dance library)
+    this.ownAnims = [];       // clips carried by the loaded GLB itself
+    this.libAnims = [];       // library clips bound to the current skeleton
+    this.clipFilter = null;   // Set of allowed clip names (empty/null = all)
+    this.manualBpm = 0;       // 0 = follow the detected beat
     this._upload(torusKnot());
+  }
+
+  // Bundled animation library (skeleton-only GLB): bound by bone base-name to
+  // whatever rigged model is currently loaded.
+  setAnimLibrary(buf) {
+    try { this.animLib = parseAnimLib(buf); } catch (e) { this.animLib = null; return; }
+    this._bindLibrary();
+  }
+
+  _bindLibrary() {
+    this.libAnims = [];
+    if (this.skel && this.animLib) {
+      const idxByBase = {};
+      this.skel.nodes.forEach((n, i) => {
+        idxByBase[n.name.split(':').pop().split('.').pop()] = i;
+      });
+      for (const clip of this.animLib) {
+        const channels = [];
+        for (const ch of clip.channels) {
+          const ni = idxByBase[ch.bone];
+          if (ni === undefined) continue;
+          channels.push({ node: ni, path: ch.path, times: ch.times, vals: ch.vals });
+        }
+        if (channels.length > 4)
+          this.libAnims.push({ name: clip.name, channels, dur: clip.dur, pace: clip.pace });
+      }
+    }
+    this._mergeAnims();
+  }
+
+  _mergeAnims() {
+    if (!this.skel) { this.anims = null; return; }
+    const own = this.ownAnims || [];
+    const lib = this.libAnims.filter(l => !own.some(o => o.name === l.name));
+    const all = own.concat(lib);
+    this.anims = all.length ? all : null;
+    this._dir = null;
   }
 
   _freeMeshes() {
@@ -459,7 +530,7 @@ class ModelSim {
     const gl = this.gl;
     this._freeMeshes();
     this.skel = model.skel || null;
-    this.anims = model.anims || null;
+    this.ownAnims = model.anims || [];
     this.restJoints = null;
     this._db = null;
     if (this.skel) {
@@ -531,9 +602,22 @@ class ModelSim {
       }
       return m;
     });
+    this._bindLibrary();
   }
 
   get hasSkin() { return !!this.skel; }
+
+  // Append extra clips (a user-loaded GLB with animations) to the library.
+  addAnimLibrary(buf) {
+    const extra = parseAnimLib(buf); // throws on invalid input
+    if (!this.animLib) this.animLib = [];
+    for (const c of extra) {
+      const i = this.animLib.findIndex(x => x.name === c.name);
+      if (i >= 0) this.animLib[i] = c; else this.animLib.push(c);
+    }
+    this._bindLibrary();
+    return extra.map(c => c.name);
+  }
 
   // Joint matrices (world * inverseBind) for the whole skeleton. With
   // `targets` (base bone name -> world-space direction) an extra local
@@ -583,6 +667,15 @@ class ModelSim {
   // Musical beat clock: counts beats (with a free-running metronome between
   // and without detected beats) and exposes a smoothed phase inside the beat.
   _beatClock(t, beat) {
+    // manual BPM: a pure metronome, immune to the beat detector
+    if (this.manualBpm > 0) {
+      const per = 60/this.manualBpm;
+      const db = this._db || (this._db = { n: 0, last: t, period: per, prevBeat: 0 });
+      db.period = per;
+      if (t - db.last > 10) db.last = t;
+      while (t - db.last >= per) { db.last += per; db.n++; }
+      return { n: db.n, p: Math.max(0, (t - db.last)/per), period: per };
+    }
     const db = this._db || (this._db = { n: 0, last: -1, period: 0.5, prevBeat: 0 });
     if (beat > 0.6 && db.prevBeat <= 0.6) {
       // refractory window: energetic tracks fire on kick AND snare/hats,
@@ -615,11 +708,18 @@ class ModelSim {
       pn0: 0, pp0: 0, lastSwitch: t, sb: 0, psb: 0, lastT: t });
     const dt = Math.min(0.1, Math.max(0.001, t - d.lastT));
     d.lastT = t;
-    if (this.anims.length > 1 &&
-        ((bc.n - d.n0) >= 16 || t - d.lastSwitch > 14)) {
-      d.prev = d.clip; d.pn0 = d.n0; d.pp0 = d.p0; d.psb = d.sb;
-      let next = Math.floor(Math.random()*this.anims.length);
-      if (next === d.clip) next = (next + 1) % this.anims.length;
+    // repertoire: only the clips ticked in the panel (none ticked = all)
+    const pool = [];
+    this.anims.forEach((a, i) => {
+      if (!this.clipFilter || !this.clipFilter.size || this.clipFilter.has(a.name)) pool.push(i);
+    });
+    if (!pool.length) this.anims.forEach((_, i) => pool.push(i));
+    const outOfPool = pool.indexOf(d.clip) < 0;
+    if ((pool.length > 1 || outOfPool) &&
+        (outOfPool || (bc.n - d.n0) >= 16 || t - d.lastSwitch > 14)) {
+      d.prev = outOfPool ? -1 : d.clip; d.pn0 = d.n0; d.pp0 = d.p0; d.psb = d.sb;
+      let next = pool[Math.floor(Math.random()*pool.length)];
+      if (next === d.clip && pool.length > 1) next = pool[(pool.indexOf(next) + 1) % pool.length];
       d.clip = next; d.n0 = bc.n; d.p0 = bc.p; d.sb = 0; d.lastSwitch = t;
     }
     const SPB = 0.5*speed;   // clip-seconds per music beat

@@ -38,5 +38,7 @@ contextBridge.exposeInMainWorld('djv', {
   peaks: (path, buckets) => ipcRenderer.invoke('audio:peaks', path, buckets),
   // Ask macOS for camera permission (interactive family) right before use.
   camAccess: () => ipcRenderer.invoke('cam:ensure'),
+  // Convert a Mixamo FBX animation to a library GLB clip (via Blender).
+  convertAnim: (p) => ipcRenderer.invoke('anim:convert', p),
   readFile: (path) => ipcRenderer.invoke('file:read', path)
 });

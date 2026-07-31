@@ -27,7 +27,11 @@
       "preload.js",
       "src/**/*",
       "svg/**/*",
-      "models/**/*"
+      "models/**/*",
+      "scripts/fbx2animglb.py"
+    ],
+    "asarUnpack": [
+      "scripts/fbx2animglb.py"
     ]
   },
   "devDependencies": {

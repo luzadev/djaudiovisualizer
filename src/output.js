@@ -321,6 +321,18 @@ djv.onControl(async (m) => {
       break;
     case 'svg': loadCustomTexture(m.dataUrl); break;
     case 'modelBg': viz.modelBg = m.mode || 'gradient'; break;
+    case 'glbAnims': viz.setClipFilter(m.names || []); break;
+    case 'modelBpm': viz.setManualBpm(m.bpm || 0); break;
+    case 'animAdd':
+      // extra animation GLB for the dance library
+      try {
+        const b = await djv.readFile(m.path);
+        if (!b) throw new Error('file non leggibile');
+        const names = viz.addAnimLibrary(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength));
+        reportClips();
+        if (names.length) djv.report({ type: 'animAdded', names });
+      } catch (e) { djv.report({ type: 'error', message: 'Animazione: ' + e.message }); }
+      break;
     case 'glb':
       try {
         const bytes = await djv.readFile(m.path);
@@ -329,6 +341,7 @@ djv.onControl(async (m) => {
         const ok = viz.setModelData(buf);
         if (ok === false) throw new Error((viz.model3d && viz.model3d.loadError) || 'GLB non valido');
         djv.report({ type: 'glbLoaded', name: m.path.split('/').pop() });
+        reportClips();
         hideHint();
       } catch (e) { djv.report({ type: 'error', message: 'GLB: ' + e.message }); }
       break;
@@ -614,6 +627,19 @@ function frame() {
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
+
+// Tell the panel which dance clips the current model can play.
+function reportClips() {
+  const names = viz.model3d && viz.model3d.anims ? viz.model3d.anims.map(a => a.name) : [];
+  djv.report({ type: 'glbClips', names });
+}
+
+// Bundled dance library (skeleton-only GLB with the Mixamo clips): binds to
+// any rigged model the user loads.
+fetch('djvres://models/dance_library.glb')
+  .then(r => r.arrayBuffer())
+  .then(b => { viz.setAnimLibrary(b); reportClips(); })
+  .catch(() => { /* library optional: models with own clips still dance */ });
 
 // Populate the device list once at startup so the control dropdown fills in.
 reportDevices();

@@ -141,6 +141,19 @@
           <option value="wave">Fluido Onda</option>
           <!-- tutte le altre famiglie vengono aggiunte da control.js -->
         </select>
+        <label>Repertorio del ballerino</label>
+        <div id="glb-anims" class="av-fams"></div>
+        <button id="btn-anim-load" class="wide">💃 Aggiungi animazioni (.fbx / .glb)…</button>
+        <input type="file" id="anim-input" accept=".fbx,.glb" multiple hidden />
+        <label>BPM ballerino <span id="glb-bpm-val">auto</span></label>
+        <div class="row led-row">
+          <input type="number" class="led-num" id="glb-bpm" min="0" max="220" step="1" value="0"
+                 title="0 = automatico dal beat rilevato" />
+          <button id="glb-tap">👏 TAP</button>
+        </div>
+        <div class="hint-mini">Spunta le mosse che il regista può usare (nessuna spuntata = tutte).
+          Le animazioni extra arrivano da Mixamo: .glb diretti, .fbx convertiti al volo (serve Blender).
+          BPM: 0 = segue il beat; oppure scrivilo o battilo col TAP.</div>
       </section>
 
       <section class="span2" id="effect-seq-section">

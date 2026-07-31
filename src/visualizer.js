@@ -86,12 +86,48 @@ class Visualizer {
     this.effect = Object.assign({}, this.effect, effect);
   }
 
-  // Load a GLB model for the 'Modello 3D' family. Parsed lazily on the next
-  // render so the engine is only created when the family is active.
+  // The shared 3D engine, fed with any pending model, the bundled animation
+  // library and the persisted repertoire/BPM settings.
+  _ensureModel3d() {
+    if (!this.model3d) {
+      this.model3d = new window.ModelSim(this.gl);
+      if (this._libBuf) this.model3d.setAnimLibrary(this._libBuf);
+      if (this._extraLibs) this._extraLibs.forEach(b => {
+        try { this.model3d.addAnimLibrary(b); } catch (e) { /* già segnalato */ }
+      });
+      if (this._clipFilter) this.model3d.clipFilter = this._clipFilter;
+      if (this._manualBpm) this.model3d.manualBpm = this._manualBpm;
+    }
+    if (this._pendingGlb) { this.model3d.setModel(this._pendingGlb); this._pendingGlb = null; }
+    return this.model3d;
+  }
+
+  // Load a GLB model for the 'Modello 3D' family (parsed immediately so the
+  // panel can list its clips).
   setModelData(buf) {
-    if (this.model3d) return this.model3d.setModel(buf);
-    this._pendingGlb = buf;
-    return true;
+    if (!window.ModelSim) { this._pendingGlb = buf; return true; }
+    return this._ensureModel3d().setModel(buf);
+  }
+
+  setAnimLibrary(buf) {
+    this._libBuf = buf;
+    if (this.model3d) this.model3d.setAnimLibrary(buf);
+  }
+
+  addAnimLibrary(buf) {
+    (this._extraLibs = this._extraLibs || []).push(buf);
+    if (!window.ModelSim) return [];
+    return this._ensureModel3d().addAnimLibrary(buf);
+  }
+
+  setClipFilter(names) {
+    this._clipFilter = new Set(names || []);
+    if (this.model3d) this.model3d.clipFilter = this._clipFilter;
+  }
+
+  setManualBpm(bpm) {
+    this._manualBpm = bpm || 0;
+    if (this.model3d) this.model3d.manualBpm = this._manualBpm;
   }
 
   // Upload a custom source (HTMLImageElement / HTMLCanvasElement) for the
@@ -112,8 +148,7 @@ class Visualizer {
     // Release the camera as soon as a non-interactive preset takes over.
     if (this.inter && !e.isInteractive) this.inter.suspend();
     if (e.isModel3d && window.ModelSim) {
-      if (!this.model3d) this.model3d = new window.ModelSim(gl);
-      if (this._pendingGlb) { this.model3d.setModel(this._pendingGlb); this._pendingGlb = null; }
+      this._ensureModel3d();
       // optional backdrop behind the model: a fluid mode ('ink'/'fire'/...)
       // or any shader family ('fam:<index>'), tinted with the active palette
       const bg = this.modelBg || 'gradient';
@@ -142,9 +177,7 @@ class Visualizer {
       this.inter.customSource = this.customSource || null;
       // The model-puppet and avatar modes drive the shared 3D renderer.
       if ((e.interactiveMode === 'model' || e.interactiveMode === 'avatar') && window.ModelSim) {
-        if (!this.model3d) this.model3d = new window.ModelSim(gl);
-        if (this._pendingGlb) { this.model3d.setModel(this._pendingGlb); this._pendingGlb = null; }
-        this.inter.modelSim = this.model3d;
+        this.inter.modelSim = this._ensureModel3d();
       }
       this.inter.render(timeSec, audio, e, this.canvas);
       return;

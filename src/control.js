@@ -147,9 +147,40 @@ $('#svg-input').addEventListener('change', (e) => {
 // The path persists and is re-sent when the output window (re)starts.
 let glbPath = localStorage.getItem('glb3d') || '';
 let glbBg = localStorage.getItem('glbbg') || 'gradient';
+let glbClipSel = [];
+try { glbClipSel = JSON.parse(localStorage.getItem('glbclips') || '[]'); } catch (e) {}
+let glbAnimFiles = [];
+try { glbAnimFiles = JSON.parse(localStorage.getItem('glbanimfiles') || '[]'); } catch (e) {}
+let glbBpm = parseInt(localStorage.getItem('glbbpm') || '0', 10) || 0;
 function glbSend() {
   if (glbPath) send({ type: 'glb', path: glbPath });
   send({ type: 'modelBg', mode: glbBg });
+  glbAnimFiles.forEach(p => send({ type: 'animAdd', path: p }));
+  send({ type: 'glbAnims', names: glbClipSel });
+  send({ type: 'modelBpm', bpm: glbBpm });
+}
+function renderGlbClips(names) {
+  const box = $('#glb-anims');
+  box.innerHTML = '';
+  if (!names || !names.length) {
+    box.innerHTML = '<span class="hint-mini">Carica un modello riggato per vedere le mosse.</span>';
+    return;
+  }
+  names.forEach((n) => {
+    const l = document.createElement('label');
+    l.className = 'av-fam' + (glbClipSel.includes(n) ? ' on' : '');
+    const c = document.createElement('input');
+    c.type = 'checkbox'; c.checked = glbClipSel.includes(n);
+    c.addEventListener('change', () => {
+      glbClipSel = c.checked ? glbClipSel.concat(n) : glbClipSel.filter(x => x !== n);
+      l.classList.toggle('on', c.checked);
+      localStorage.setItem('glbclips', JSON.stringify(glbClipSel));
+      send({ type: 'glbAnims', names: glbClipSel });
+    });
+    l.appendChild(c);
+    l.appendChild(document.createTextNode(' ' + n));
+    box.appendChild(l);
+  });
 }
 function glbLabel(name) {
   $('#glb-name').textContent = name
@@ -172,6 +203,57 @@ $('#glb-bg').addEventListener('change', (e) => {
   glbBg = e.target.value;
   localStorage.setItem('glbbg', glbBg);
   send({ type: 'modelBg', mode: glbBg });
+});
+renderGlbClips([]);
+$('#btn-anim-load').addEventListener('click', () => $('#anim-input').click());
+$('#anim-input').addEventListener('change', async (e) => {
+  for (const f of [...e.target.files]) {
+    const p = djv.pathForFile(f);
+    if (!p) continue;
+    if (/\.glb$/i.test(p)) {
+      if (!glbAnimFiles.includes(p)) glbAnimFiles.push(p);
+      send({ type: 'animAdd', path: p });
+    } else {
+      glbLabel('⏳ converto ' + f.name + '…');
+      const res = await djv.convertAnim(p);
+      if (res && res.ok) {
+        if (!glbAnimFiles.includes(res.path)) glbAnimFiles.push(res.path);
+        send({ type: 'animAdd', path: res.path });
+        glbLabel(glbPath ? glbPath.split('/').pop() : '');
+      } else {
+        $('#glb-name').textContent = '⚠️ ' + ((res && res.error) || 'conversione fallita');
+      }
+    }
+  }
+  localStorage.setItem('glbanimfiles', JSON.stringify(glbAnimFiles));
+  e.target.value = '';
+});
+function glbBpmLabel() { $('#glb-bpm-val').textContent = glbBpm > 0 ? glbBpm + ' BPM' : 'auto'; }
+$('#glb-bpm').value = glbBpm;
+glbBpmLabel();
+$('#glb-bpm').addEventListener('change', (e) => {
+  glbBpm = Math.max(0, Math.min(220, parseInt(e.target.value || '0', 10) || 0));
+  e.target.value = glbBpm;
+  localStorage.setItem('glbbpm', String(glbBpm));
+  glbBpmLabel();
+  send({ type: 'modelBpm', bpm: glbBpm });
+});
+let tapTimes = [];
+$('#glb-tap').addEventListener('click', () => {
+  const now = performance.now();
+  if (tapTimes.length && now - tapTimes[tapTimes.length-1] > 2000) tapTimes = [];
+  tapTimes.push(now);
+  if (tapTimes.length >= 4) {
+    const iv = [];
+    for (let i = Math.max(1, tapTimes.length-8); i < tapTimes.length; i++)
+      iv.push(tapTimes[i] - tapTimes[i-1]);
+    const avg = iv.reduce((a, b) => a + b, 0) / iv.length;
+    glbBpm = Math.max(40, Math.min(220, Math.round(60000/avg)));
+    $('#glb-bpm').value = glbBpm;
+    localStorage.setItem('glbbpm', String(glbBpm));
+    glbBpmLabel();
+    send({ type: 'modelBpm', bpm: glbBpm });
+  }
 });
 $('#btn-glb-load').addEventListener('click', () => $('#glb-input').click());
 $('#glb-input').addEventListener('change', (e) => {
@@ -1535,6 +1617,7 @@ djv.onReport((m) => {
         $('#scene-name').textContent = m.name + (m.bpm ? ' · ' + m.bpm + ' BPM' : '');
       }
       break;
+    case 'glbClips': renderGlbClips(m.names); break;
     case 'devices': {
       // The output reports its devices once at startup: good moment to push
       // config the (possibly recreated) output window doesn't have yet.
