@@ -1408,6 +1408,86 @@ $('#ticker-bold').addEventListener('change', (e) => send({ type: 'tickerWeight',
 $('#ticker-color').addEventListener('input', (e) => send({ type: 'tickerColor', value: e.target.value }));
 $('#ticker-fx').addEventListener('change', (e) => send({ type: 'tickerFx', value: e.target.value }));
 
+// ---------------------------------------------------------------- mapping
+// Projection mapping zones: the panel is the source of truth (persisted);
+// corner drags on the output flow back via the 'mapZones' report.
+let mapCfg = { on: false, zones: [] };
+try { mapCfg = Object.assign(mapCfg, JSON.parse(localStorage.getItem('mapcfg') || '{}')); } catch (e) {}
+let mapNextId = mapCfg.zones.reduce((m2, z) => Math.max(m2, z.id || 0), 0) + 1;
+function mapSave() { localStorage.setItem('mapcfg', JSON.stringify({ on: mapCfg.on, zones: mapCfg.zones })); }
+function mapSendZones() { send({ type: 'mapZones', zones: mapCfg.zones }); }
+function mapSendAll() {
+  mapSendZones();
+  send({ type: 'mapOn', on: mapCfg.on });
+  send({ type: 'mapEdit', on: $('#map-edit').checked });
+}
+function mapAddZone(src) {
+  const n = mapCfg.zones.length;
+  const off = (n % 4) * 0.05;
+  mapCfg.zones.push({ id: mapNextId++, name: 'Zona ' + mapNextId,
+    src, corners: [[0.25+off, 0.25+off], [0.75+off, 0.25+off], [0.75+off, 0.75+off], [0.25+off, 0.75+off]],
+    srcRect: [0, 0, 1, 1], opacity: 1 });
+  mapSave(); mapSendZones(); renderMapZones();
+}
+function renderMapZones() {
+  const box = $('#map-zones');
+  box.innerHTML = '';
+  if (!mapCfg.zones.length) {
+    box.innerHTML = '<div class="hint-mini">Nessuna zona: aggiungine una qui sotto.</div>';
+    return;
+  }
+  mapCfg.zones.forEach((z, i) => {
+    const row = document.createElement('div');
+    row.className = 'map-zone';
+    const isImg = z.src && z.src.type === 'image';
+    row.innerHTML =
+      '<span class="mz-ico">' + (isImg ? '🖼' : '🌀') + '</span>' +
+      '<input class="mz-name" type="text" value="' + (z.name || 'Zona') + '" />' +
+      (isImg ? '<span class="mz-src" title="' + (z.src.path || '') + '">' +
+        String(z.src.path || '').split(/[\\/]/).pop() + '</span>'
+        : '<span class="mz-rect">Porzione ' +
+          '<input class="mz-r" data-k="0" type="number" min="0" max="100" value="' + Math.round(z.srcRect[0]*100) + '" />%,' +
+          '<input class="mz-r" data-k="1" type="number" min="0" max="100" value="' + Math.round(z.srcRect[1]*100) + '" />% ' +
+          '<input class="mz-r" data-k="2" type="number" min="1" max="100" value="' + Math.round(z.srcRect[2]*100) + '" />%×' +
+          '<input class="mz-r" data-k="3" type="number" min="1" max="100" value="' + Math.round(z.srcRect[3]*100) + '" />%</span>') +
+      '<input class="mz-op" type="range" min="0.1" max="1" step="0.05" value="' + z.opacity + '" title="Opacità" />' +
+      '<button class="mz-del" title="Elimina zona">✕</button>';
+    row.querySelector('.mz-name').addEventListener('change', (e) => {
+      z.name = e.target.value; mapSave(); mapSendZones();
+    });
+    row.querySelectorAll('.mz-r').forEach(inp => inp.addEventListener('change', (e) => {
+      const k = parseInt(e.target.dataset.k, 10);
+      z.srcRect[k] = Math.max(0, Math.min(1, (parseInt(e.target.value, 10) || 0)/100));
+      if (z.srcRect[2] <= 0) z.srcRect[2] = 0.01;
+      if (z.srcRect[3] <= 0) z.srcRect[3] = 0.01;
+      mapSave(); mapSendZones();
+    }));
+    row.querySelector('.mz-op').addEventListener('input', (e) => {
+      z.opacity = parseFloat(e.target.value); mapSave(); mapSendZones();
+    });
+    row.querySelector('.mz-del').addEventListener('click', () => {
+      mapCfg.zones.splice(i, 1); mapSave(); mapSendZones(); renderMapZones();
+    });
+    box.appendChild(row);
+  });
+}
+$('#map-on').checked = mapCfg.on;
+$('#map-on').addEventListener('change', (e) => {
+  mapCfg.on = e.target.checked; mapSave(); send({ type: 'mapOn', on: mapCfg.on });
+});
+$('#map-edit').addEventListener('change', (e) => send({ type: 'mapEdit', on: e.target.checked }));
+$('#map-add-vis').addEventListener('click', () => mapAddZone({ type: 'visual' }));
+$('#map-add-img').addEventListener('click', () => $('#map-img-input').click());
+$('#map-img-input').addEventListener('change', (e) => {
+  const f = e.target.files[0];
+  if (f) {
+    const p = djv.pathForFile(f);
+    if (p) mapAddZone({ type: 'image', path: p });
+  }
+  e.target.value = '';
+});
+renderMapZones();
+
 // ---------------------------------------------------------------- displays
 async function refreshDisplays() {
   const list = await djv.listDisplays();
@@ -1729,11 +1809,18 @@ djv.onReport((m) => {
       }
       break;
     case 'glbClips': renderGlbClips(m.names); break;
+    case 'mapZones':
+      // corner edits made on the output: adopt and persist
+      mapCfg.zones = m.zones || [];
+      mapSave();
+      renderMapZones();
+      break;
     case 'devices': {
       // The output reports its devices once at startup: good moment to push
       // config the (possibly recreated) output window doesn't have yet.
       if (ledCfg.on) ledSend();
       glbSend();
+      mapSendAll();
       const sel = $('#device-select');
       const cur = sel.value;
       sel.innerHTML = '<option value="">— Input live (mic/line/BlackHole) —</option>';

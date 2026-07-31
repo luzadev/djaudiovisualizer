@@ -18,6 +18,7 @@
     <button data-tab="playlist">🎶 Playlist</button>
     <button data-tab="effetti">🌀 Effetti</button>
     <button data-tab="anim3d">🧊 Animazioni 3D</button>
+    <button data-tab="mappa">🗺 Mappatura</button>
     <button data-tab="pad">🎹 Pad</button>
     <button data-tab="immagini">🖼 Immagini</button>
     <button data-tab="testo">🔤 Testo</button>
@@ -198,6 +199,27 @@
         <div class="hint-mini">Spunta le mosse che il regista può usare (nessuna spuntata = tutte).
           Le animazioni extra arrivano da Mixamo: .glb diretti, .fbx convertiti al volo (serve Blender).
           BPM: 0 = segue il beat; oppure scrivilo o battilo col TAP.</div>
+      </section>
+    </div>
+
+    <!-- ============ MAPPATURA ============ -->
+    <div class="tab-panel" data-tab="mappa">
+      <section class="span2">
+        <label>Mappatura proiezione</label>
+        <div class="row">
+          <label class="chk"><input type="checkbox" id="map-on" /> Attiva</label>
+          <label class="chk"><input type="checkbox" id="map-edit" /> Modifica zone (maniglie sull'output)</label>
+        </div>
+        <div id="map-zones"></div>
+        <div class="row">
+          <button id="map-add-vis">➕ Zona Visual</button>
+          <button id="map-add-img">➕ Zona Immagine…</button>
+          <input type="file" id="map-img-input" accept="image/*" hidden />
+        </div>
+        <div class="hint-mini">Ogni zona è un quadrilatero proiettato: con “Modifica zone” trascini i
+          4 angoli (o l'intera zona) direttamente sull'output guardando la superficie reale.
+          Le zone <b>Visual</b> mostrano l'effetto live (anche solo una porzione, per wall multi-pannello);
+          le zone <b>Immagine</b> fanno corner-pin di un'immagine su un oggetto. Fuori dalle zone: nero.</div>
       </section>
     </div>
 

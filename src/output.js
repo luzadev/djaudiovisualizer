@@ -89,6 +89,10 @@ function composeFrame() {
   // Draw the canvas where it actually sits (the LED area may confine it).
   const cr = canvas.getBoundingClientRect();
   recCtx.drawImage(canvas, cr.x * sx, cr.y * sy, cr.width * sx, cr.height * sy);
+  if (mapOn && mapping) {
+    const mr = mapping.canvas.getBoundingClientRect();
+    try { recCtx.drawImage(mapping.canvas, mr.x * sx, mr.y * sy, mr.width * sx, mr.height * sy); } catch (e) {}
+  }
 
   if (bgVideo.classList.contains('show') && bgVideo.readyState >= 2 && bgVideo.videoWidth) {
     recCtx.globalAlpha = parseFloat(getComputedStyle(bgVideo).opacity) || 1;
@@ -324,6 +328,22 @@ djv.onControl(async (m) => {
       break;
     case 'svg': loadCustomTexture(m.dataUrl); break;
     case 'modelBg': viz.modelBg = m.mode || 'gradient'; break;
+    case 'mapZones':
+      try {
+        ensureMapping().setZones((m.zones || []).map(z => Object.assign({}, z,
+          { src: z.src && z.src.type === 'image'
+            ? { type: 'image', url: toFileURL(z.src.path), path: z.src.path }
+            : { type: 'visual' } })));
+      } catch (e) { djv.report({ type: 'error', message: 'Mappatura: ' + e.message }); }
+      break;
+    case 'mapOn':
+      mapOn = !!m.on;
+      $('#map-canvas').classList.toggle('show', mapOn);
+      break;
+    case 'mapEdit':
+      if (mapping) mapping.editOn = !!m.on;
+      $('#map-canvas').classList.toggle('edit', !!m.on);
+      break;
     case 'glbAnims': viz.setClipFilter(m.names || []); break;
     case 'modelBpm': viz.setManualBpm(m.bpm || 0); break;
     case 'modelSpread': viz.setArmSpread(m.deg || 0); break;
@@ -574,6 +594,7 @@ function frame() {
   const a = audio.values;
   avTick(performance.now());
   viz.render(t * speed, a);
+  if (mapOn && mapping) mapping.render();
 
   // Interactive family: tell the control panel if the camera didn't start
   // (permission denied / missing device). Mouse interaction still works.
@@ -631,6 +652,20 @@ function frame() {
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
+
+// ------------------------------------------------------------- mapping
+let mapping = null, mapOn = false;
+function ensureMapping() {
+  if (!mapping) {
+    mapping = new window.MappingSim($('#map-canvas'), canvas);
+    // corner drags on the output flow back to the panel, which persists them
+    mapping.onChange = (zones) => djv.report({ type: 'mapZones',
+      zones: zones.map(z => ({ id: z.id, name: z.name,
+        src: z.src.type === 'image' ? { type: 'image', path: z.src.path } : { type: 'visual' },
+        corners: z.corners, srcRect: z.srcRect, opacity: z.opacity })) });
+  }
+  return mapping;
+}
 
 // Tell the panel which dance clips the current model can play.
 function reportClips() {

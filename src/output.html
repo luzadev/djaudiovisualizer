@@ -12,6 +12,9 @@
   <div id="stage">
   <canvas id="gl"></canvas>
 
+  <!-- Projection mapping layer (zones warped over the visual) -->
+  <canvas id="map-canvas"></canvas>
+
   <!-- Video layer (VJ loop) that blends with the generated visuals -->
   <video id="bg-video" class="bg-video" loop muted playsinline></video>
 
@@ -50,6 +53,7 @@
   <script src="pose.js"></script>
   <script src="interactive.js"></script>
   <script src="model3d.js"></script>
+  <script src="mapping.js"></script>
   <script src="visualizer.js"></script>
   <script src="audio.js"></script>
   <script src="output.js"></script>
