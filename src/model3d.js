@@ -535,10 +535,9 @@ class ModelSim {
   // `targets` (base bone name -> world-space direction) an extra local
   // rotation is solved per bone so that its chain child points along the
   // target — FK retargeting of the tracked body onto the Mixamo rig.
-  // Sample the first animation clip at time tt (looping): node -> {r?, t?}.
-  _sampleAnim(tt) {
-    const a = this.anims[0];
-    const T = tt % a.dur;
+  // Sample an animation clip at time tt (looping): node -> {r?, t?}.
+  _sampleAnim(a, tt) {
+    const T = ((tt % a.dur) + a.dur) % a.dur;
     const out = {};
     for (const ch of a.channels) {
       const times = ch.times;
@@ -561,6 +560,48 @@ class ModelSim {
       }
     }
     return out;
+  }
+
+  // Dance director for multi-clip GLBs: plays the current move in loop and
+  // switches to the next one every 16 beats (or ~14s without beats) with a
+  // short pose crossfade, so a set of Mixamo dances follows the music.
+  _danceDirector(t, speed, beat) {
+    const d = this._dir || (this._dir = { clip: 0, prev: -1, t0: t, prevT0: 0,
+      lastSwitch: t, beatN: 0, prevBeat: 0 });
+    if (beat > 0.6 && d.prevBeat <= 0.6) d.beatN++;
+    d.prevBeat = beat;
+    if (this.anims.length > 1 &&
+        (d.beatN >= 16 || t - d.lastSwitch > 14)) {
+      d.prev = d.clip; d.prevT0 = d.t0;
+      let next = Math.floor(Math.random()*this.anims.length);
+      if (next === d.clip) next = (next + 1) % this.anims.length;
+      d.clip = next; d.t0 = t; d.lastSwitch = t; d.beatN = 0;
+    }
+    const cur = this._sampleAnim(this.anims[d.clip], (t - d.t0)*speed);
+    const FADE = 0.45;
+    const f = (t - d.lastSwitch)/FADE;
+    if (f >= 1 || d.prev < 0) return cur;
+    // crossfade with the previous move
+    const old = this._sampleAnim(this.anims[d.prev], (t - d.prevT0)*speed);
+    const w = f*f*(3 - 2*f);
+    for (const ni in old) {
+      const o = old[ni], c = cur[ni] || (cur[ni] = {});
+      if (o.r) {
+        if (!c.r) c.r = o.r;
+        else {
+          const sg = (o.r[0]*c.r[0] + o.r[1]*c.r[1] + o.r[2]*c.r[2] + o.r[3]*c.r[3]) < 0 ? -1 : 1;
+          const q = [o.r[0] + (c.r[0]*sg - o.r[0])*w, o.r[1] + (c.r[1]*sg - o.r[1])*w,
+                     o.r[2] + (c.r[2]*sg - o.r[2])*w, o.r[3] + (c.r[3]*sg - o.r[3])*w];
+          const l = Math.hypot(q[0], q[1], q[2], q[3]) || 1;
+          c.r = [q[0]/l, q[1]/l, q[2]/l, q[3]/l];
+        }
+      }
+      if (o.t) {
+        if (!c.t) c.t = o.t;
+        else c.t = [o.t[0] + (c.t[0]-o.t[0])*w, o.t[1] + (c.t[1]-o.t[1])*w, o.t[2] + (c.t[2]-o.t[2])*w];
+      }
+    }
+    return cur;
   }
 
   // Beat-locked procedural dance for rigged models without animation clips:
@@ -871,7 +912,7 @@ class ModelSim {
       if (skinnedLive) {
         curJoints = this._computeJoints(pose.skinTargets);
       } else if (this.anims) {
-        curJoints = this._computeJoints(null, this._sampleAnim(timeSec*speed));
+        curJoints = this._computeJoints(null, this._danceDirector(timeSec, speed, beat));
       } else {
         const dance = this._danceTargets(timeSec, beat, bass);
         curJoints = this._computeJoints(dance.targets);
