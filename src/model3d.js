@@ -562,9 +562,12 @@ class ModelSim {
         if (ch._k === undefined) {
           const rest = this.skel.nodes[ch.node].t;
           const rl = Math.hypot(rest[0], rest[1], rest[2]);
-          const v0 = Math.hypot(V[0], V[1], V[2]);
+          // peak over the first keys: robust when the clip starts near zero
+          let v0 = 0;
+          for (let s = 0; s < Math.min(V.length, 24); s += 3)
+            v0 = Math.max(v0, Math.hypot(V[s], V[s+1], V[s+2]));
           const ratio = rl > 1e-6 && v0 > 1e-6 ? v0/rl : 1;
-          ch._k = (ratio > 3 || ratio < 0.33) ? rl/v0 : 1;
+          ch._k = (ratio > 3 || ratio < 0.33) ? Math.min(1000, Math.max(0.001, rl/v0)) : 1;
         }
         const k = ch._k;
         o.t = [(V[i3] + (V[j3]-V[i3])*f)*k, (V[i3+1] + (V[j3+1]-V[i3+1])*f)*k,
@@ -920,12 +923,15 @@ class ModelSim {
     const dist = this.radius*2.6;
     // live body-driven skinning? else: animation clip or procedural dance
     const skinnedLive = this.skel && pose && pose.skinTargets;
+    // Dancing follows the MUSIC, not the global visual-speed slider: use a
+    // real-time clock (only the preset variant speed scales the moves).
+    const rt = performance.now()/1000;
     let curJoints = null, danceX = 0, danceY = 0, danceZ = 0;
     if (this.skel) {
       if (skinnedLive) {
         curJoints = this._computeJoints(pose.skinTargets);
       } else if (this.anims) {
-        curJoints = this._computeJoints(null, this._danceDirector(timeSec, speed, beat));
+        curJoints = this._computeJoints(null, this._danceDirector(rt, speed, beat));
         // keep the dancer framed: cancel the clip's root motion horizontally,
         // keep a taste of the vertical bounce
         if (this._hipsRest && this._hipsW) {
@@ -934,7 +940,7 @@ class ModelSim {
           danceZ = (this._hipsRest[2] - this._hipsW[2]);
         }
       } else {
-        const dance = this._danceTargets(timeSec, beat, bass);
+        const dance = this._danceTargets(rt, beat, bass);
         curJoints = this._computeJoints(dance.targets);
         danceY = dance.bounceY*this.radius;
       }
