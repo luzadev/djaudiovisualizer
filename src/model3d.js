@@ -498,6 +498,10 @@ class ModelSim {
         for (const ch of clip.channels) {
           const ni = idxByBase[ch.bone];
           if (ni === undefined) continue;
+          // foreign clips: translations only for the Hips — per-bone
+          // translations carry the SOURCE rig's proportions and would
+          // stretch/crush a model with different bone lengths
+          if (ch.path === 'translation' && ch.bone !== 'Hips') continue;
           channels.push({ node: ni, path: ch.path, times: ch.times, vals: ch.vals });
         }
         if (channels.length > 4)
