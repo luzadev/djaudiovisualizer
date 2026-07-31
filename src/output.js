@@ -320,6 +320,7 @@ djv.onControl(async (m) => {
       djv.report({ type: 'autoVj', on: autoVj });
       break;
     case 'svg': loadCustomTexture(m.dataUrl); break;
+    case 'modelBg': viz.modelBg = m.mode || 'gradient'; break;
     case 'glb':
       try {
         const bytes = await djv.readFile(m.path);

@@ -114,7 +114,15 @@ class Visualizer {
     if (e.isModel3d && window.ModelSim) {
       if (!this.model3d) this.model3d = new window.ModelSim(gl);
       if (this._pendingGlb) { this.model3d.setModel(this._pendingGlb); this._pendingGlb = null; }
-      this.model3d.render(timeSec, audio, e, this.canvas);
+      // optional fluid backdrop behind the model (modelBg: ink/fire/ring/...)
+      const bg = this.modelBg || 'gradient';
+      if (bg !== 'gradient' && window.FluidSim) {
+        if (!this.fluid) this.fluid = new window.FluidSim(gl);
+        this.fluid.render(timeSec, audio, Object.assign({}, e, { fluidMode: bg }), this.canvas);
+        this.model3d.render(timeSec, audio, e, this.canvas, null, true);
+      } else {
+        this.model3d.render(timeSec, audio, e, this.canvas);
+      }
       return;
     }
     if (e.isInteractive && window.InteractiveSim) {

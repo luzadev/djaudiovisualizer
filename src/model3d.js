@@ -929,7 +929,9 @@ class ModelSim {
   // pose (optional, from the camera-interactive mode): { yaw, leanX, hopY,
   // squash, rim } — extra rotation, sideways lean, jump height (in radii),
   // vertical squash & stretch, touch-glow 0..1.
-  render(timeSec, audio, e, canvas, pose) {
+  // overlay = true: another engine (e.g. the fluid sim) already painted the
+  // canvas this frame — draw only the model on top (clear depth, no backdrop).
+  render(timeSec, audio, e, canvas, pose, overlay) {
     const gl = this.gl;
     const speed = Math.min(2.5, e.speed || 1);
     const mix = e.audioMix !== undefined ? e.audioMix : 1;
@@ -938,10 +940,15 @@ class ModelSim {
 
     gl.viewport(0, 0, canvas.width, canvas.height);
     gl.disable(gl.BLEND);
-    gl.clearColor(0, 0, 0, 1);
-    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    if (overlay) {
+      gl.clear(gl.DEPTH_BUFFER_BIT);
+    } else {
+      gl.clearColor(0, 0, 0, 1);
+      gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    }
 
     // backdrop
+    if (!overlay) {
     gl.useProgram(this.progBg);
     gl.bindBuffer(gl.ARRAY_BUFFER, this.quad);
     gl.enableVertexAttribArray(this.aBg);
@@ -953,6 +960,7 @@ class ModelSim {
     gl.uniform1f(this.ub.uBass, bass);
     gl.uniform1f(this.ub.uBeat, beat);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
+    }
 
     // model
     const asp = canvas.width/Math.max(1, canvas.height);

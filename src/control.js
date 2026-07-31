@@ -146,13 +146,23 @@ $('#svg-input').addEventListener('change', (e) => {
 // --- 3D model (GLB) for the 'Modello 3D' family -----------------------------
 // The path persists and is re-sent when the output window (re)starts.
 let glbPath = localStorage.getItem('glb3d') || '';
-function glbSend() { if (glbPath) send({ type: 'glb', path: glbPath }); }
+let glbBg = localStorage.getItem('glbbg') || 'gradient';
+function glbSend() {
+  if (glbPath) send({ type: 'glb', path: glbPath });
+  send({ type: 'modelBg', mode: glbBg });
+}
 function glbLabel(name) {
   $('#glb-name').textContent = name
     ? '🧊 ' + name + ' — attiva la famiglia “Modello 3D” per vederlo.'
     : 'Il modello ruota a tempo di musica nella famiglia “Modello 3D”.';
 }
 if (glbPath) glbLabel(glbPath.split('/').pop());
+$('#glb-bg').value = glbBg;
+$('#glb-bg').addEventListener('change', (e) => {
+  glbBg = e.target.value;
+  localStorage.setItem('glbbg', glbBg);
+  send({ type: 'modelBg', mode: glbBg });
+});
 $('#btn-glb-load').addEventListener('click', () => $('#glb-input').click());
 $('#glb-input').addEventListener('change', (e) => {
   const f = e.target.files[0];
