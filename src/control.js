@@ -55,8 +55,11 @@ renderAvFams();
 $('#auto-vj').addEventListener('click', () => avSend(!autoVjOn));
 
 // --- Library browser (hundreds of presets, filterable) ---
+// 3D-model families live in the Animazioni 3D tab, not in the effect library.
+const FAM_3D = (name) => /^Modello 3D$|^Interattivo Modello$|^Interattivo Avatar$/.test(name);
 const familySel = $('#effect-family');
 EFFECTS.families.forEach((name, i) => {
+  if (FAM_3D(name)) return;
   const o = document.createElement('option'); o.value = i; o.textContent = name;
   familySel.appendChild(o);
 });
@@ -68,6 +71,7 @@ function filteredEffects() {
   const out = [];
   for (let i = 0; i < EFFECTS.list.length; i++) {
     const e = EFFECTS.list[i];
+    if (FAM_3D(e.familyName)) continue;
     if (fam >= 0 && e.family !== fam) continue;
     if (q && e.name.toLowerCase().indexOf(q) < 0) continue;
     out.push(e);
@@ -255,6 +259,33 @@ $('#glb-tap').addEventListener('click', () => {
     send({ type: 'modelBpm', bpm: glbBpm });
   }
 });
+// ---- 3D effect activation (these families are hidden from the library) ----
+const fam3dSel = $('#glb-effect-fam');
+const pre3dSel = $('#glb-effect-preset');
+EFFECTS.families.forEach((name, i) => {
+  if (!FAM_3D(name)) return;
+  const o = document.createElement('option'); o.value = i; o.textContent = name;
+  fam3dSel.appendChild(o);
+});
+function fill3dPresets() {
+  const fam = parseInt(fam3dSel.value, 10);
+  pre3dSel.innerHTML = '';
+  EFFECTS.list.forEach((e, i) => {
+    if (e.family !== fam) return;
+    const o = document.createElement('option'); o.value = i;
+    o.textContent = e.name.replace(EFFECTS.families[fam] + ' · ', '');
+    pre3dSel.appendChild(o);
+  });
+}
+function apply3d() {
+  const e = EFFECTS.list[parseInt(pre3dSel.value, 10)];
+  if (e) applyEffect(e);
+}
+fill3dPresets();
+fam3dSel.addEventListener('change', () => { fill3dPresets(); apply3d(); });
+pre3dSel.addEventListener('change', apply3d);
+$('#glb-effect-go').addEventListener('click', apply3d);
+
 $('#btn-glb-load').addEventListener('click', () => $('#glb-input').click());
 $('#glb-input').addEventListener('change', (e) => {
   const f = e.target.files[0];
