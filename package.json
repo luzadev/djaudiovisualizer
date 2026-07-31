@@ -28,10 +28,11 @@
       "src/**/*",
       "svg/**/*",
       "models/**/*",
-      "scripts/fbx2animglb.py"
+      "scripts/fbx2animglb.py",
+      "scripts/fbx2modelglb.py"
     ],
     "asarUnpack": [
-      "scripts/fbx2animglb.py"
+      "scripts/*.py"
     ]
   },
   "devDependencies": {

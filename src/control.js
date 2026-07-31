@@ -287,17 +287,26 @@ pre3dSel.addEventListener('change', apply3d);
 $('#glb-effect-go').addEventListener('click', apply3d);
 
 $('#btn-glb-load').addEventListener('click', () => $('#glb-input').click());
-$('#glb-input').addEventListener('change', (e) => {
+$('#glb-input').addEventListener('change', async (e) => {
   const f = e.target.files[0];
   if (!f) return;
-  const p = djv.pathForFile(f);
-  if (p) {
-    glbPath = p;
-    localStorage.setItem('glb3d', p);
-    glbSend();
-    glbLabel(f.name);
-  }
+  let p = djv.pathForFile(f);
   e.target.value = '';
+  if (!p) return;
+  // FBX characters (e.g. a Mixamo T-pose) are converted to GLB by Blender
+  if (/\.fbx$/i.test(p)) {
+    glbLabel('⏳ converto ' + f.name + '… (qualche secondo)');
+    const res = await djv.convertModel(p);
+    if (!res || !res.ok) {
+      $('#glb-name').textContent = '⚠️ ' + ((res && res.error) || 'conversione fallita');
+      return;
+    }
+    p = res.path;
+  }
+  glbPath = p;
+  localStorage.setItem('glb3d', p);
+  glbSend();
+  glbLabel(f.name.replace(/\.fbx$/i, '.glb'));
 });
 
 // --- Effect sequence (playlist of effects with auto-cycle) ---

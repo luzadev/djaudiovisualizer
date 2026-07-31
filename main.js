@@ -117,24 +117,27 @@ function blenderPath() {
   for (const c of cands) if (fs.existsSync(c)) return c;
   return null;
 }
-ipcMain.handle('anim:convert', async (_e, fbxPath) => {
+function convertFbx(fbxPath, scriptName, outSub) {
   const blender = blenderPath();
-  if (!blender) return { ok: false, error: 'Blender non trovato: serve per convertire gli FBX (oppure carica un .glb)' };
-  const outDir = path.join(app.getPath('userData'), 'anims');
+  if (!blender) return Promise.resolve({ ok: false,
+    error: 'Blender non trovato: serve per convertire gli FBX (oppure carica un .glb)' });
+  const outDir = path.join(app.getPath('userData'), outSub);
   fs.mkdirSync(outDir, { recursive: true });
   const out = path.join(outDir, path.basename(fbxPath).replace(/\.fbx$/i, '') + '.glb');
   // packaged app: the .py must live outside the asar for Blender to read it
-  const script = path.join(__dirname, 'scripts', 'fbx2animglb.py')
+  const script = path.join(__dirname, 'scripts', scriptName)
     .replace('app.asar' + path.sep, 'app.asar.unpacked' + path.sep);
   return new Promise((resolve) => {
     execFile(blender, ['-b', '-P', script, '--', fbxPath, out],
-      { maxBuffer: 1 << 24, timeout: 180000 }, (err, _so, se) => {
+      { maxBuffer: 1 << 24, timeout: 300000 }, (err, _so, se) => {
         if (err || !fs.existsSync(out))
           resolve({ ok: false, error: 'conversione fallita: ' + String(se || (err && err.message) || '').slice(-300) });
         else resolve({ ok: true, path: out });
       });
   });
-});
+}
+ipcMain.handle('anim:convert', (_e, p) => convertFbx(p, 'fbx2animglb.py', 'anims'));
+ipcMain.handle('model:convert', (_e, p) => convertFbx(p, 'fbx2modelglb.py', 'models3d'));
 
 // Camera permission is requested lazily (only when an interactive preset is
 // activated), not at startup: no camera prompt for users who never use it.
