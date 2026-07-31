@@ -8,8 +8,10 @@ const filePath = (f) => djv.pathForFile(f);
 // ---------------------------------------------------------------- effects
 const EFFECTS = window.EFFECTS;
 let currentEffect = EFFECTS.list[0];
+let lastNon3d = EFFECTS.list[0];   // to step back out of the 3D families
 
 function applyEffect(effect) {
+  if (!effect.isModel3d && !effect.isInteractive) lastNon3d = effect;
   currentEffect = effect;
   send({ type: 'effect', effect });
   $('#scene-name').textContent = effect.name;
@@ -354,6 +356,7 @@ fill3dPresets();
 fam3dSel.addEventListener('change', () => { fill3dPresets(); apply3d(); });
 pre3dSel.addEventListener('change', apply3d);
 $('#glb-effect-go').addEventListener('click', apply3d);
+$('#glb-effect-off').addEventListener('click', () => applyEffect(lastNon3d));
 
 $('#btn-glb-load').addEventListener('click', () => $('#glb-input').click());
 $('#glb-input').addEventListener('change', async (e) => {
