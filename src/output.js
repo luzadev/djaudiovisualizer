@@ -17,9 +17,12 @@ try {
 const audio = new AudioEngine();
 let speed = 1.0;
 
-// Convert an absolute filesystem path into a file:// URL the renderer can load.
+// Convert an absolute filesystem path into a file:// URL the renderer can
+// load (Windows: backslashes -> slashes, drive letter needs a leading /).
 function toFileURL(p) {
-  return encodeURI('file://' + p).replace(/#/g, '%23').replace(/\?/g, '%3F');
+  let n = String(p).replace(/\\/g, '/');
+  if (n[0] !== '/') n = '/' + n;
+  return encodeURI('file://' + n).replace(/#/g, '%23').replace(/\?/g, '%3F');
 }
 
 // ---------------------------------------------------------------- overlays
@@ -341,7 +344,7 @@ djv.onControl(async (m) => {
         const buf = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
         const ok = viz.setModelData(buf);
         if (ok === false) throw new Error((viz.model3d && viz.model3d.loadError) || 'GLB non valido');
-        djv.report({ type: 'glbLoaded', name: m.path.split('/').pop() });
+        djv.report({ type: 'glbLoaded', name: m.path.split(/[\\/]/).pop() });
         reportClips();
         hideHint();
       } catch (e) { djv.report({ type: 'error', message: 'GLB: ' + e.message }); }

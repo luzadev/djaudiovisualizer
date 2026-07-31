@@ -114,6 +114,15 @@ async function ensureMicAccess() {
 function blenderPath() {
   const cands = ['/Applications/Blender.app/Contents/MacOS/Blender',
     '/opt/homebrew/bin/blender', '/usr/local/bin/blender'];
+  if (process.platform === 'win32') {
+    // Blender installs versioned folders under Program Files
+    for (const root of ['C:\\Program Files\\Blender Foundation', 'C:\\Program Files (x86)\\Blender Foundation']) {
+      try {
+        for (const d of fs.readdirSync(root))
+          cands.push(path.join(root, d, 'blender.exe'));
+      } catch (e) { /* root missing */ }
+    }
+  }
   for (const c of cands) if (fs.existsSync(c)) return c;
   return null;
 }
@@ -209,7 +218,8 @@ function ffmpegPath() {
   const cands = [];
   try { cands.push(require('ffmpeg-static')); } catch (e) { /* optional */ }
   cands.push(process.env.FFMPEG, 'ffmpeg',
-    '/opt/homebrew/bin/ffmpeg', '/usr/local/bin/ffmpeg', '/usr/bin/ffmpeg');
+    '/opt/homebrew/bin/ffmpeg', '/usr/local/bin/ffmpeg', '/usr/bin/ffmpeg',
+    'C:\\ffmpeg\\bin\\ffmpeg.exe', 'C:\\Program Files\\ffmpeg\\bin\\ffmpeg.exe');
   for (const c of cands) {
     if (!c) continue;
     if (c === 'ffmpeg' || fs.existsSync(c)) return c;

@@ -250,8 +250,8 @@ function glbLabel(name) {
     : 'Il modello ruota a tempo di musica nella famiglia “Modello 3D”.';
 }
 if (glbPath) {
-  glbLabel(glbPath.split('/').pop());
-  if (!glbModels.some(m => m.path === glbPath)) addGlbModel(glbPath.split('/').pop(), glbPath);
+  glbLabel(glbPath.split(/[\\/]/).pop());
+  if (!glbModels.some(m => m.path === glbPath)) addGlbModel(glbPath.split(/[\\/]/).pop(), glbPath);
 }
 renderGlbModels();
 // every shader family can be a backdrop too (fluid/interactive/3D excluded:
@@ -292,7 +292,7 @@ $('#anim-input').addEventListener('change', async (e) => {
       if (res && res.ok) {
         if (!glbAnimFiles.includes(res.path)) glbAnimFiles.push(res.path);
         send({ type: 'animAdd', path: res.path });
-        glbLabel(glbPath ? glbPath.split('/').pop() : '');
+        glbLabel(glbPath ? glbPath.split(/[\\/]/).pop() : '');
       } else {
         $('#glb-name').textContent = '⚠️ ' + ((res && res.error) || 'conversione fallita');
       }
@@ -784,7 +784,7 @@ function refreshScenePreview(i) {
   advanceCues(playCur || 0);
 }
 
-const baseName = (p) => p.split('/').pop();
+const baseName = (p) => p.split(/[\\/]/).pop();
 
 function probePaths(paths) {
   const todo = paths.filter(p => p && !(p in durations));
