@@ -577,27 +577,49 @@ class ModelSim {
     return out;
   }
 
-  // Dance director for multi-clip GLBs: plays the current move in loop and
-  // switches to the next one every 16 beats (or ~14s without beats) with a
-  // short pose crossfade, so a set of Mixamo dances follows the music.
+  // Musical beat clock: counts beats (with a free-running metronome between
+  // and without detected beats) and exposes a smoothed phase inside the beat.
+  _beatClock(t, beat) {
+    const db = this._db || (this._db = { n: 0, last: -1, period: 0.5, prevBeat: 0 });
+    if (beat > 0.6 && db.prevBeat <= 0.6) {
+      if (db.last >= 0) {
+        const iv = t - db.last;
+        if (iv > 0.24 && iv < 1.3) db.period = iv;
+      }
+      db.last = t; db.n++;
+    } else if (db.last < 0 || t - db.last > db.period*1.6) {
+      db.last = db.last < 0 ? t : db.last + db.period;
+      db.n++;
+    }
+    db.prevBeat = beat;
+    const p = Math.min(1, Math.max(0, (t - db.last)/db.period));
+    return { n: db.n, p: p*p*(3 - 2*p) };
+  }
+
+  // Dance director for multi-clip GLBs: the clip timeline is PHASE-LOCKED to
+  // the music — one choreography count (0.5s of clip, ~120bpm authoring) per
+  // detected beat — so the steps land on the kick regardless of the track's
+  // BPM. Moves switch every 16 beats with a short pose crossfade.
   _danceDirector(t, speed, beat) {
-    const d = this._dir || (this._dir = { clip: 0, prev: -1, t0: t, prevT0: 0,
-      lastSwitch: t, beatN: 0, prevBeat: 0 });
-    if (beat > 0.6 && d.prevBeat <= 0.6) d.beatN++;
-    d.prevBeat = beat;
+    const bc = this._beatClock(t, beat);
+    const d = this._dir || (this._dir = { clip: 0, prev: -1, n0: bc.n, p0: bc.p,
+      pn0: 0, pp0: 0, lastSwitch: t });
     if (this.anims.length > 1 &&
-        (d.beatN >= 16 || t - d.lastSwitch > 14)) {
-      d.prev = d.clip; d.prevT0 = d.t0;
+        ((bc.n - d.n0) >= 16 || t - d.lastSwitch > 14)) {
+      d.prev = d.clip; d.pn0 = d.n0; d.pp0 = d.p0;
       let next = Math.floor(Math.random()*this.anims.length);
       if (next === d.clip) next = (next + 1) % this.anims.length;
-      d.clip = next; d.t0 = t; d.lastSwitch = t; d.beatN = 0;
+      d.clip = next; d.n0 = bc.n; d.p0 = bc.p; d.lastSwitch = t;
     }
-    const cur = this._sampleAnim(this.anims[d.clip], (t - d.t0)*speed);
+    const SPB = 0.5*speed;   // clip-seconds per music beat
+    const ct = Math.max(0, (bc.n - d.n0) + bc.p - d.p0)*SPB;
+    const cur = this._sampleAnim(this.anims[d.clip], ct);
     const FADE = 0.45;
     const f = (t - d.lastSwitch)/FADE;
     if (f >= 1 || d.prev < 0) return cur;
-    // crossfade with the previous move
-    const old = this._sampleAnim(this.anims[d.prev], (t - d.prevT0)*speed);
+    // crossfade with the previous move (same beat-locked timeline)
+    const old = this._sampleAnim(this.anims[d.prev],
+      Math.max(0, (bc.n - d.pn0) + bc.p - d.pp0)*SPB);
     const w = f*f*(3 - 2*f);
     for (const ni in old) {
       const o = old[ni], c = cur[ni] || (cur[ni] = {});
@@ -623,21 +645,8 @@ class ModelSim {
   // arms pump on alternate beats, hips sway, head nods, knees bounce. A
   // free-running metronome keeps the groove between detected beats.
   _danceTargets(t, beat, bass) {
-    const db = this._db || (this._db = { n: 0, last: -1, period: 0.5, prevBeat: 0 });
-    if (beat > 0.6 && db.prevBeat <= 0.6) {
-      if (db.last >= 0) {
-        const iv = t - db.last;
-        if (iv > 0.24 && iv < 1.3) db.period = iv;
-      }
-      db.last = t; db.n++;
-    } else if (db.last < 0 || t - db.last > db.period*1.6) {
-      db.last = db.last < 0 ? t : db.last + db.period;
-      db.n++;
-    }
-    db.prevBeat = beat;
-    const p = Math.min(1, Math.max(0, (t - db.last)/db.period));
-    const sm = p*p*(3 - 2*p);
-    const ph = (db.n + sm)*Math.PI;
+    const bc = this._beatClock(t, beat);
+    const ph = (bc.n + bc.p)*Math.PI;
     const s = Math.sin(ph);
     const bounce = Math.abs(s);
     const amp = 0.65 + 0.6*bass;
