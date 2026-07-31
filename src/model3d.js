@@ -658,11 +658,24 @@ class ModelSim {
           for (let s = 0; s < Math.min(V.length, 24); s += 3)
             v0 = Math.max(v0, Math.hypot(V[s], V[s+1], V[s+2]));
           const ratio = rl > 1e-6 && v0 > 1e-6 ? v0/rl : 1;
-          ch._k = (ratio > 3 || ratio < 0.33) ? Math.min(1000, Math.max(0.001, rl/v0)) : 1;
+          ch._k = (ratio > 1.75 || ratio < 0.57) ? Math.min(1000, Math.max(0.001, rl/v0)) : 1;
+          ch._rest = rest; ch._rl = rl;
         }
         const k = ch._k;
-        o.t = [(V[i3] + (V[j3]-V[i3])*f)*k, (V[i3+1] + (V[j3+1]-V[i3+1])*f)*k,
-               (V[i3+2] + (V[j3+2]-V[i3+2])*f)*k];
+        let tx = (V[i3] + (V[j3]-V[i3])*f)*k, ty = (V[i3+1] + (V[j3+1]-V[i3+1])*f)*k,
+            tz = (V[i3+2] + (V[j3+2]-V[i3+2])*f)*k;
+        // safety net: the offset from the rest position may never exceed
+        // 1.2x the bone's rest length, whatever the source clip does — this
+        // keeps foreign clips from throwing the model out of the frame
+        if (ch._rl > 1e-6) {
+          const dx = tx - ch._rest[0], dy = ty - ch._rest[1], dz = tz - ch._rest[2];
+          const d = Math.hypot(dx, dy, dz), max = ch._rl*1.2;
+          if (d > max) {
+            const s = max/d;
+            tx = ch._rest[0] + dx*s; ty = ch._rest[1] + dy*s; tz = ch._rest[2] + dz*s;
+          }
+        }
+        o.t = [tx, ty, tz];
       }
     }
     return out;
@@ -1083,8 +1096,9 @@ class ModelSim {
         // keep the dancer framed: cancel the clip's root motion horizontally,
         // keep a taste of the vertical bounce
         if (this._hipsRest && this._hipsW) {
+          const cap = this.radius*0.5; // residual bounce may never leave the frame
           danceX = (this._hipsRest[0] - this._hipsW[0]);
-          danceY = (this._hipsRest[1] - this._hipsW[1])*0.6;
+          danceY = Math.max(-cap, Math.min(cap, (this._hipsRest[1] - this._hipsW[1])*0.6));
           danceZ = (this._hipsRest[2] - this._hipsW[2]);
         }
       } else {
@@ -1098,7 +1112,7 @@ class ModelSim {
       : timeSec*0.45*speed*(pose ? 0.12 : 1) + (pose ? pose.yaw : 0);
     const eye = [Math.sin(timeSec*0.13)*this.radius*(skinnedLive ? 0 : 0.35),
                  this.radius*(0.25 + (skinnedLive ? 0 : 0.15*Math.sin(timeSec*0.09))), dist];
-    const proj = m4persp(0.72, asp, dist*0.05, dist*4.0);
+    const proj = m4persp(0.72, asp, dist*0.02, dist*8.0);
     const view = m4lookAt(eye, [0, 0, 0]);
     const scale = 1 + 0.05*bass + 0.07*beat;
     const sq = pose && !skinnedLive ? Math.max(0.7, Math.min(1.3, pose.squash || 1)) : 1;
