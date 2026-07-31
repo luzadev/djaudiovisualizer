@@ -592,8 +592,10 @@ class ModelSim {
       db.n++;
     }
     db.prevBeat = beat;
-    const p = Math.min(1, Math.max(0, (t - db.last)/db.period));
-    return { n: db.n, p: p*p*(3 - 2*p) };
+    // linear phase, allowed to run past 1 while waiting for the next beat:
+    // motion must never stall (the callers smooth any re-sync jumps)
+    const p = db.last >= 0 ? Math.max(0, (t - db.last)/db.period) : 0;
+    return { n: db.n, p };
   }
 
   // Dance director for multi-clip GLBs: the clip timeline is PHASE-LOCKED to
@@ -603,23 +605,30 @@ class ModelSim {
   _danceDirector(t, speed, beat) {
     const bc = this._beatClock(t, beat);
     const d = this._dir || (this._dir = { clip: 0, prev: -1, n0: bc.n, p0: bc.p,
-      pn0: 0, pp0: 0, lastSwitch: t });
+      pn0: 0, pp0: 0, lastSwitch: t, sb: 0, psb: 0, lastT: t });
+    const dt = Math.min(0.1, Math.max(0.001, t - d.lastT));
+    d.lastT = t;
     if (this.anims.length > 1 &&
         ((bc.n - d.n0) >= 16 || t - d.lastSwitch > 14)) {
-      d.prev = d.clip; d.pn0 = d.n0; d.pp0 = d.p0;
+      d.prev = d.clip; d.pn0 = d.n0; d.pp0 = d.p0; d.psb = d.sb;
       let next = Math.floor(Math.random()*this.anims.length);
       if (next === d.clip) next = (next + 1) % this.anims.length;
-      d.clip = next; d.n0 = bc.n; d.p0 = bc.p; d.lastSwitch = t;
+      d.clip = next; d.n0 = bc.n; d.p0 = bc.p; d.sb = 0; d.lastSwitch = t;
     }
     const SPB = 0.5*speed;   // clip-seconds per music beat
-    const ct = Math.max(0, (bc.n - d.n0) + bc.p - d.p0)*SPB;
-    const cur = this._sampleAnim(this.anims[d.clip], ct);
+    // fluid chase of the beat-locked timeline: absorbs metronome re-syncs
+    // without the stop-and-go feel of hard phase clamping
+    const k = 1 - Math.exp(-dt*9);
+    const tgt = Math.max(0, (bc.n - d.n0) + (bc.p - d.p0));
+    d.sb += (tgt - d.sb)*k;
+    const cur = this._sampleAnim(this.anims[d.clip], d.sb*SPB);
     const FADE = 0.45;
     const f = (t - d.lastSwitch)/FADE;
     if (f >= 1 || d.prev < 0) return cur;
-    // crossfade with the previous move (same beat-locked timeline)
-    const old = this._sampleAnim(this.anims[d.prev],
-      Math.max(0, (bc.n - d.pn0) + bc.p - d.pp0)*SPB);
+    // crossfade with the previous move (same beat-locked, chased timeline)
+    const ptgt = Math.max(0, (bc.n - d.pn0) + (bc.p - d.pp0));
+    d.psb += (ptgt - d.psb)*k;
+    const old = this._sampleAnim(this.anims[d.prev], d.psb*SPB);
     const w = f*f*(3 - 2*f);
     for (const ni in old) {
       const o = old[ni], c = cur[ni] || (cur[ni] = {});
@@ -646,7 +655,9 @@ class ModelSim {
   // free-running metronome keeps the groove between detected beats.
   _danceTargets(t, beat, bass) {
     const bc = this._beatClock(t, beat);
-    const ph = (bc.n + bc.p)*Math.PI;
+    // the procedural sway DOES want the eased phase (it reads as groove)
+    const pr = Math.min(1, bc.p);
+    const ph = (bc.n + pr*pr*(3 - 2*pr))*Math.PI;
     const s = Math.sin(ph);
     const bounce = Math.abs(s);
     const amp = 0.65 + 0.6*bass;
