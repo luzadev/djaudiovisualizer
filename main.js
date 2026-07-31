@@ -73,7 +73,7 @@ function createWindows() {
 
   // --- Control window (the panel) ---
   controlWin = new BrowserWindow({
-    width: 580,
+    width: 780,
     height: 880,
     minWidth: 420,
     x: primary.bounds.x + 60,
