@@ -178,7 +178,7 @@ function renderGlbClips(names) {
       send({ type: 'glbAnims', names: glbClipSel });
     });
     l.appendChild(c);
-    l.appendChild(document.createTextNode(' ' + n));
+    l.appendChild(document.createTextNode(n));
     box.appendChild(l);
   });
 }
