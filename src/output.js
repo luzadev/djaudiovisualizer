@@ -333,7 +333,9 @@ djv.onControl(async (m) => {
         ensureMapping().setZones((m.zones || []).map(z => Object.assign({}, z,
           { src: z.src && z.src.type === 'image'
             ? { type: 'image', url: toFileURL(z.src.path), path: z.src.path }
-            : { type: 'visual' } })));
+            : (z.src && z.src.type === 'effect'
+              ? { type: 'effect', effectIndex: z.src.effectIndex }
+              : { type: 'visual' }) })));
       } catch (e) { djv.report({ type: 'error', message: 'Mappatura: ' + e.message }); }
       break;
     case 'mapOn':
@@ -594,7 +596,7 @@ function frame() {
   const a = audio.values;
   avTick(performance.now());
   viz.render(t * speed, a);
-  if (mapOn && mapping) mapping.render();
+  if (mapOn && mapping) mapping.render(t * speed, a);
 
   // Interactive family: tell the control panel if the camera didn't start
   // (permission denied / missing device). Mouse interaction still works.
@@ -661,7 +663,9 @@ function ensureMapping() {
     // corner drags on the output flow back to the panel, which persists them
     mapping.onChange = (zones) => djv.report({ type: 'mapZones',
       zones: zones.map(z => ({ id: z.id, name: z.name,
-        src: z.src.type === 'image' ? { type: 'image', path: z.src.path } : { type: 'visual' },
+        src: z.src.type === 'image' ? { type: 'image', path: z.src.path }
+          : (z.src.type === 'effect' ? { type: 'effect', effectIndex: z.src.effectIndex }
+            : { type: 'visual' }),
         corners: z.corners, srcRect: z.srcRect, opacity: z.opacity })) });
   }
   return mapping;

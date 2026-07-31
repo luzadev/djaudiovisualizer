@@ -1440,11 +1440,30 @@ function renderMapZones() {
     const row = document.createElement('div');
     row.className = 'map-zone';
     const isImg = z.src && z.src.type === 'image';
+    const isFx = z.src && z.src.type === 'effect';
+    let mid;
+    if (isImg) {
+      mid = '<span class="mz-src" title="' + (z.src.path || '') + '">' +
+        String(z.src.path || '').split(/[\\/]/).pop() + '</span>';
+    } else if (isFx) {
+      const cur = EFFECTS.list[z.src.effectIndex] || EFFECTS.defaults();
+      let famOpts = '', preOpts = '';
+      EFFECTS.families.forEach((name, fi) => {
+        if (/^Interattivo|^Modello 3D/.test(name)) return;
+        famOpts += '<option value="' + fi + '"' + (fi === cur.family ? ' selected' : '') + '>' + name + '</option>';
+      });
+      EFFECTS.list.forEach((e2, ei) => {
+        if (e2.family !== cur.family) return;
+        preOpts += '<option value="' + ei + '"' + (ei === z.src.effectIndex ? ' selected' : '') + '>' +
+          e2.name.replace(EFFECTS.families[e2.family] + ' · ', '') + '</option>';
+      });
+      mid = '<span class="mz-fx"><select class="mz-fam">' + famOpts + '</select>' +
+        '<select class="mz-pre">' + preOpts + '</select></span>';
+    }
     row.innerHTML =
-      '<span class="mz-ico">' + (isImg ? '🖼' : '🌀') + '</span>' +
+      '<span class="mz-ico">' + (isImg ? '🖼' : (isFx ? '✨' : '🌀')) + '</span>' +
       '<input class="mz-name" type="text" value="' + (z.name || 'Zona') + '" />' +
-      (isImg ? '<span class="mz-src" title="' + (z.src.path || '') + '">' +
-        String(z.src.path || '').split(/[\\/]/).pop() + '</span>'
+      (mid !== undefined ? mid
         : '<span class="mz-rect">Porzione ' +
           '<input class="mz-r" data-k="0" type="number" min="0" max="100" value="' + Math.round(z.srcRect[0]*100) + '" />%,' +
           '<input class="mz-r" data-k="1" type="number" min="0" max="100" value="' + Math.round(z.srcRect[1]*100) + '" />% ' +
@@ -1455,6 +1474,27 @@ function renderMapZones() {
     row.querySelector('.mz-name').addEventListener('change', (e) => {
       z.name = e.target.value; mapSave(); mapSendZones();
     });
+    const famSel = row.querySelector('.mz-fam');
+    if (famSel) {
+      const preSel = row.querySelector('.mz-pre');
+      famSel.addEventListener('change', () => {
+        const fam = parseInt(famSel.value, 10);
+        preSel.innerHTML = '';
+        EFFECTS.list.forEach((e2, ei) => {
+          if (e2.family !== fam) return;
+          const o = document.createElement('option');
+          o.value = ei;
+          o.textContent = e2.name.replace(EFFECTS.families[fam] + ' · ', '');
+          preSel.appendChild(o);
+        });
+        z.src.effectIndex = parseInt(preSel.value, 10);
+        mapSave(); mapSendZones();
+      });
+      preSel.addEventListener('change', () => {
+        z.src.effectIndex = parseInt(preSel.value, 10);
+        mapSave(); mapSendZones();
+      });
+    }
     row.querySelectorAll('.mz-r').forEach(inp => inp.addEventListener('change', (e) => {
       const k = parseInt(e.target.dataset.k, 10);
       z.srcRect[k] = Math.max(0, Math.min(1, (parseInt(e.target.value, 10) || 0)/100));
@@ -1477,6 +1517,8 @@ $('#map-on').addEventListener('change', (e) => {
 });
 $('#map-edit').addEventListener('change', (e) => send({ type: 'mapEdit', on: e.target.checked }));
 $('#map-add-vis').addEventListener('click', () => mapAddZone({ type: 'visual' }));
+$('#map-add-fx').addEventListener('click', () =>
+  mapAddZone({ type: 'effect', effectIndex: EFFECTS.list.indexOf(EFFECTS.defaults()) < 0 ? 12 : EFFECTS.list.indexOf(EFFECTS.defaults()) }));
 $('#map-add-img').addEventListener('click', () => $('#map-img-input').click());
 $('#map-img-input').addEventListener('change', (e) => {
   const f = e.target.files[0];

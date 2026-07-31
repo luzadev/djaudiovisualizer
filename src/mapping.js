@@ -104,6 +104,7 @@ class MappingSim {
     this.visTex = mkTex();
     this._mkTex = mkTex;
     this.imgTex = {};        // path -> {tex, ok}
+    this.fx = {};            // zoneId -> {canvas, viz, tex, effectIndex} own engine
     this.zones = [];
     this.editOn = false;
     this.selected = -1;
@@ -121,6 +122,33 @@ class MappingSim {
       opacity: z.opacity !== undefined ? z.opacity : 1
     }));
     if (this.selected >= this.zones.length) this.selected = this.zones.length - 1;
+    // per-zone effect engines: an independent Visualizer on an offscreen
+    // canvas, so every zone can run a DIFFERENT preset in sync with the music
+    for (const id in this.fx) {
+      if (!this.zones.some(z => z.src.type === 'effect' && String(z.id) === id)) {
+        try { this.fx[id].viz = null; } catch (e) {}
+        delete this.fx[id];
+      }
+    }
+    for (const z of this.zones) {
+      if (z.src.type !== 'effect' || !window.Visualizer || !window.EFFECTS) continue;
+      let f = this.fx[z.id];
+      if (!f) {
+        const cv = document.createElement('canvas');
+        cv.width = 960; cv.height = 540;
+        const viz = new window.Visualizer(cv);
+        viz.resize = () => {};             // fixed offscreen resolution
+        cv.width = 960; cv.height = 540;
+        viz.gl.viewport(0, 0, 960, 540);
+        f = this.fx[z.id] = { canvas: cv, viz, tex: this._mkTex(), effectIndex: -1 };
+      }
+      if (f.effectIndex !== z.src.effectIndex) {
+        let e = window.EFFECTS.list[z.src.effectIndex];
+        if (!e || e.isInteractive || e.isModel3d) e = window.EFFECTS.defaults();
+        f.viz.setEffect(e);
+        f.effectIndex = z.src.effectIndex;
+      }
+    }
     // preload image textures
     const gl = this.gl;
     for (const z of this.zones) {
@@ -193,10 +221,20 @@ class MappingSim {
     return hit;
   }
 
-  render() {
+  render(timeSec, audio) {
     const gl = this.gl, cv = this.canvas;
     const w = this.main.width, h = this.main.height;
     if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+
+    // step the per-zone effect engines and refresh their textures
+    for (const z of this.zones) {
+      const f = z.src.type === 'effect' && this.fx[z.id];
+      if (!f) continue;
+      try { f.viz.render(timeSec || 0, audio || {}); } catch (e) { continue; }
+      gl.bindTexture(gl.TEXTURE_2D, f.tex);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, f.canvas);
+    }
+
     gl.viewport(0, 0, w, h);
     gl.clearColor(0, 0, 0, 1);
     gl.clear(gl.COLOR_BUFFER_BIT);
@@ -219,6 +257,10 @@ class MappingSim {
         const e = this.imgTex[z.src.url];
         if (!e || !e.ok) continue;
         tex = e.tex;
+      } else if (z.src.type === 'effect') {
+        const f = this.fx[z.id];
+        if (!f) continue;
+        tex = f.tex;
       }
       const c = z.corners;
       gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([

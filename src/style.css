@@ -931,6 +931,8 @@ kbd {
 .map-zone .mz-name { width: 90px; flex: 0 0 auto; }
 .map-zone .mz-src { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: 0.75; }
 .map-zone .mz-rect { flex: 1; display: flex; align-items: center; gap: 2px; white-space: nowrap; opacity: 0.9; }
+.map-zone .mz-fx { flex: 1; display: flex; gap: 4px; min-width: 0; }
+.map-zone .mz-fx select { flex: 1; min-width: 0; padding: 4px 6px; font-size: 11px; }
 .map-zone .mz-r { width: 44px; flex: 0 0 auto; }
 .map-zone .mz-op { flex: 0 0 70px; }
 .map-zone .mz-del {
