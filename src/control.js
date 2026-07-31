@@ -186,12 +186,61 @@ function renderGlbClips(names) {
     box.appendChild(l);
   });
 }
+// Model library: every loaded model is remembered for one-click switching.
+let glbModels = [];
+try { glbModels = JSON.parse(localStorage.getItem('glbmodels') || '[]'); } catch (e) {}
+function saveGlbModels() { localStorage.setItem('glbmodels', JSON.stringify(glbModels)); }
+function addGlbModel(name, p) {
+  const i = glbModels.findIndex(m => m.path === p);
+  if (i < 0) glbModels.push({ name, path: p }); else glbModels[i].name = name;
+  saveGlbModels();
+  renderGlbModels();
+}
+function renderGlbModels() {
+  const box = $('#glb-models');
+  box.innerHTML = '';
+  if (!glbModels.length) {
+    box.innerHTML = '<span class="hint-mini">I modelli caricati appariranno qui per il cambio rapido.</span>';
+    return;
+  }
+  glbModels.forEach((mo) => {
+    const row = document.createElement('div');
+    row.className = 'glb-model' + (mo.path === glbPath ? ' on' : '');
+    const nm = document.createElement('span');
+    nm.className = 'gm-name';
+    nm.textContent = mo.name;
+    nm.title = mo.path;
+    nm.addEventListener('click', () => {
+      glbPath = mo.path;
+      localStorage.setItem('glb3d', glbPath);
+      send({ type: 'glb', path: glbPath });
+      glbLabel(mo.name);
+      renderGlbModels();
+    });
+    const del = document.createElement('button');
+    del.className = 'gm-del';
+    del.textContent = '✕';
+    del.title = 'Togli dalla lista (il file resta sul disco)';
+    del.addEventListener('click', () => {
+      glbModels = glbModels.filter(x => x.path !== mo.path);
+      saveGlbModels();
+      renderGlbModels();
+    });
+    row.appendChild(nm);
+    row.appendChild(del);
+    box.appendChild(row);
+  });
+}
 function glbLabel(name) {
   $('#glb-name').textContent = name
     ? '🧊 ' + name + ' — attiva la famiglia “Modello 3D” per vederlo.'
     : 'Il modello ruota a tempo di musica nella famiglia “Modello 3D”.';
 }
-if (glbPath) glbLabel(glbPath.split('/').pop());
+if (glbPath) {
+  glbLabel(glbPath.split('/').pop());
+  if (!glbModels.some(m => m.path === glbPath)) addGlbModel(glbPath.split('/').pop(), glbPath);
+}
+renderGlbModels();
 // every shader family can be a backdrop too (fluid/interactive/3D excluded:
 // fluids are the explicit options above, the others can't render as layers)
 EFFECTS.families.forEach((name, fi) => {
@@ -307,6 +356,7 @@ $('#glb-input').addEventListener('change', async (e) => {
   localStorage.setItem('glb3d', p);
   glbSend();
   glbLabel(f.name.replace(/\.fbx$/i, '.glb'));
+  addGlbModel(f.name.replace(/\.fbx$/i, '.glb'), p);
 });
 
 // --- Effect sequence (playlist of effects with auto-cycle) ---
