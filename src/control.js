@@ -1149,6 +1149,59 @@ function buildSceneEditor(tr, i, li) {
   return ed;
 }
 
+// Time labels, progress and trim-range numbers for one track row. Shared by
+// the full rebuild and by the in-place patcher so the two can never disagree.
+function trackDynamics(tr, i) {
+  const isCur = i === currentIndex;
+  const inSeg = isCur && segTimer;
+  let timeLabel = '';
+  if (inSeg) timeLabel = (segMode === 'interlude' ? '✨ ' : '⏸ ') + Math.ceil(segRemain) + 's';
+  else if (tr.isInterlude) timeLabel = '✨ ' + fmtTime(tr.duration || 15);
+  else if (isCur && playDur > 0) timeLabel = '-' + fmtTime(Math.floor(Math.max(0, playDur - playCur)));
+  else if (durations[tr.path] > 0) timeLabel = fmtTime(Math.floor(durations[tr.path]));
+  const prog = (isCur && playDur > 0) ? Math.min(100, playCur / playDur * 100) : 0;
+  const dur = durations[tr.path] || (isCur ? playDur : 0);
+  const tStart = tr.start || 0;
+  const tEnd = tr.end > 0 ? tr.end : dur;
+  const total = Math.max(0, tEnd - tStart);
+  const elapsed = isCur ? Math.max(0, Math.min(total, playCur - tStart)) : 0;
+  const remaining = Math.max(0, total - elapsed);
+  return { isCur, timeLabel, prog, tStart, total, elapsed, remaining };
+}
+
+// Everything that determines the list's DOM SKELETON (nodes and handlers).
+// While a track plays only times/progress change, so the signature stays the
+// same and renderPlaylist patches in place instead of rebuilding: a rebuild
+// every 400ms progress tick replaced nodes between mousedown and mouseup and
+// row buttons stopped receiving clicks.
+let plStamp = null;
+function plSignature() {
+  return playlist.map(t =>
+    t.name + '' + t.path + '' + (t.key || '') + '' + (t.gap || 0) +
+    '' + (t.start || 0) + '' + (t.end || 0) + '' + (t.duration || 0) +
+    '' + (t.isInterlude ? 1 : 0) + (t.isVideo ? 1 : 0) + (hasScene(t) ? 1 : 0)
+  ).join('') +
+  '' + currentIndex + '' + (isPlaying ? 1 : 0) + '' + sceneEditing +
+  '' + capturingFor +
+  '' + (sceneEditing >= 0 && playlist[sceneEditing] ? JSON.stringify(playlist[sceneEditing].cues || []) : '');
+}
+
+// In-place refresh of the dynamic bits of each row; never touches the skeleton.
+function patchPlaylistDynamics(ol) {
+  ol.querySelectorAll('li.track').forEach(li => {
+    const i = parseInt(li.dataset.index, 10);
+    const tr = playlist[i];
+    if (!tr) return;
+    const d = trackDynamics(tr, i);
+    const tt = li.querySelector('.ttime'); if (tt && tt.textContent !== d.timeLabel) tt.textContent = d.timeLabel;
+    const el = li.querySelector('.tt-el'); if (el) el.textContent = '▶ ' + fmtTime(Math.floor(d.elapsed));
+    const tot = li.querySelector('.tt-tot'); if (tot) tot.textContent = '⏱ ' + fmtTime(Math.floor(d.total));
+    const rem = li.querySelector('.tt-rem'); if (rem) rem.textContent = '⧗ -' + fmtTime(Math.ceil(d.remaining));
+    const pr = li.querySelector('.tprog'); if (pr) pr.style.width = d.prog.toFixed(1) + '%';
+    const canvas = li.querySelector('.wave'); if (canvas) drawWave(canvas, tr, d.isCur);
+  });
+}
+
 function renderPlaylist() {
   // Never rebuild the list mid-drag: replacing the dragged node would cancel
   // the browser drag instantly (progress re-renders arrive every ~400ms while
@@ -1161,6 +1214,9 @@ function renderPlaylist() {
     dragFrom = -1; cueDragging = false; clearDropMarks();
   }
   const ol = $('#playlist');
+  const sig = plSignature();
+  if (sig === plStamp && ol.querySelector('li.track')) { patchPlaylistDynamics(ol); return; }
+  plStamp = sig;
   ol.innerHTML = '';
   playlist.forEach((tr, i) => {
     const li = document.createElement('li');
@@ -1168,25 +1224,10 @@ function renderPlaylist() {
     li.draggable = true;
     li.dataset.index = i;
 
-    const isCur = i === currentIndex;
-    const inSeg = isCur && segTimer;
+    const { isCur, timeLabel, prog, tStart, total, elapsed, remaining } = trackDynamics(tr, i);
     const playIcon = (isCur && isPlaying) ? '⏸' : '▶';
-    let timeLabel = '';
-    if (inSeg) timeLabel = (segMode === 'interlude' ? '✨ ' : '⏸ ') + Math.ceil(segRemain) + 's';
-    else if (tr.isInterlude) timeLabel = '✨ ' + fmtTime(tr.duration || 15);
-    else if (isCur && playDur > 0) timeLabel = '-' + fmtTime(Math.floor(Math.max(0, playDur - playCur)));
-    else if (durations[tr.path] > 0) timeLabel = fmtTime(Math.floor(durations[tr.path]));
-    const prog = (isCur && playDur > 0) ? Math.min(100, playCur / playDur * 100) : 0;
     const gapBadge = (tr.gap > 0 && !tr.isInterlude) ? '<span class="gap-badge" title="Pausa di ' + tr.gap + 's dopo questo brano">⏸' + tr.gap + 's</span>' : '';
     const icon = tr.isInterlude ? '✨ ' : (tr.isVideo ? '🎞 ' : '');
-
-    // Total / elapsed / remaining for the trimmed range.
-    const dur = durations[tr.path] || (isCur ? playDur : 0);
-    const tStart = tr.start || 0;
-    const tEnd = tr.end > 0 ? tr.end : dur;
-    const total = Math.max(0, tEnd - tStart);
-    const elapsed = isCur ? Math.max(0, Math.min(total, playCur - tStart)) : 0;
-    const remaining = Math.max(0, total - elapsed);
 
     const body = (tr.isInterlude || !tr.path) ? '' :
       '<div class="track-body">' +
