@@ -433,11 +433,13 @@ djv.onControl(async (m) => {
       } catch (e) { djv.report({ type: 'error', message: e.message }); }
       break;
     case 'playSilence':
-      // Visual-only interlude: stop audio + hide the video, keep visuals going.
+      // Visual-only interlude: stop track audio + hide the video, keep visuals
+      // going. A LIVE input (mic/line/BlackHole) is left running: a playlist
+      // made only of scenes must stay audio-reactive to the DJ's real music.
       try {
         trackVideo.pause(); trackVideo.classList.remove('show');
         audio.onEnded = null;
-        audio.silence();
+        if (audio.mode !== 'input') audio.silence();
         hideHint();
         djv.report({ type: 'playState', playing: true });
       } catch (e) { djv.report({ type: 'error', message: e.message }); }
