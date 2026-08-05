@@ -1153,7 +1153,13 @@ function renderPlaylist() {
   // Never rebuild the list mid-drag: replacing the dragged node would cancel
   // the browser drag instantly (progress re-renders arrive every ~400ms while
   // a track plays, which made reordering impossible). Deferred to dragend.
-  if (dragFrom >= 0 || cueDragging) { plDirty = true; return; }
+  if (dragFrom >= 0 || cueDragging) {
+    if (document.querySelector('#playlist .dragging')) { plDirty = true; return; }
+    // Leaked guard: dragend never fires when the dragged node left the DOM,
+    // which would freeze the list forever. No .dragging element = no real
+    // drag in progress, so unlock and render.
+    dragFrom = -1; cueDragging = false; clearDropMarks();
+  }
   const ol = $('#playlist');
   ol.innerHTML = '';
   playlist.forEach((tr, i) => {
@@ -1214,20 +1220,31 @@ function renderPlaylist() {
         (isCur ? '<i class="tprog" style="width:' + prog.toFixed(1) + '%"></i>' : '') +
       '</div>' + body;
 
+    // Resolve the track's index at CLICK time by identity: if the list was
+    // mutated while this DOM was on screen, the render-time index is stale and
+    // would hit the wrong track (or none).
+    const liveIdx = () => playlist.indexOf(tr);
     // Clicking the name (re)starts the track from the beginning.
-    li.querySelector('.tname').addEventListener('click', () => playIndex(i));
+    li.querySelector('.tname').addEventListener('click', () => playIndex(liveIdx()));
     // On the current track the button pauses/resumes/replays; on others it starts that track.
     li.querySelector('.play-btn').addEventListener('click', () => {
-      if (i === currentIndex) togglePlayPause();
-      else playIndex(i);
+      const k = liveIdx();
+      if (k < 0) return;
+      if (k === currentIndex) togglePlayPause();
+      else playIndex(k);
     });
-    li.querySelector('.del-btn').addEventListener('click', () => removeTrack(i));
+    li.querySelector('.del-btn').addEventListener('click', () => {
+      const k = liveIdx();
+      if (k >= 0) removeTrack(k);
+    });
     li.querySelector('.key-btn').addEventListener('click', () => {
-      capturingFor = capturingFor === i ? -1 : i;
+      const k = liveIdx();
+      capturingFor = capturingFor === k ? -1 : k;
       renderPlaylist();
     });
     li.querySelector('.scene-btn').addEventListener('click', () => {
-      sceneEditing = sceneEditing === i ? -1 : i;
+      const k = liveIdx();
+      sceneEditing = sceneEditing === k ? -1 : k;
       renderPlaylist();
     });
 
