@@ -758,7 +758,18 @@ function applyEffectTo(targetKey, el) {
     // -1 = every aux window (follow-mode ones get it via the effect broadcast)
     send({ type: 'auxFx', displayId: -1, effectIndex: el.effectIndex });
   } else {
-    send({ type: 'auxFx', displayId: parseInt(targetKey, 10), effectIndex: el.effectIndex });
+    const id = parseInt(targetKey, 10);
+    // The scene explicitly targets this display: if it is connected but its
+    // aux window is off, switch it on — otherwise the cue lands nowhere and
+    // the monitor silently stays black. The window loads async; 'auxReady'
+    // re-sends the scene effect once it is up.
+    const d = auxDisplays.find(x => x.id === id);
+    if (d && !(auxCfg[id] && auxCfg[id].on)) {
+      auxCfg[id] = auxCfg[id] || { on: false, mode: 'follow', effectIndex: null, image: null };
+      auxCfg[id].on = true;
+      auxSave(); renderAuxList(); auxSyncAll();
+    }
+    send({ type: 'auxFx', displayId: id, effectIndex: el.effectIndex });
   }
 }
 function advanceCues(t) {
@@ -2128,10 +2139,18 @@ djv.onReport((m) => {
       }
       break;
     case 'glbClips': renderGlbClips(m.names); break;
-    case 'auxReady':
-      // An aux window finished loading: (re)send its configuration.
+    case 'auxReady': {
+      // An aux window finished loading: (re)send its configuration, then any
+      // scene effect currently aimed at it (it may be the reason the window
+      // was just auto-activated).
       auxSendCfg(m.displayId);
+      const sc = lastScene.effect && typeof lastScene.effect === 'object'
+        ? lastScene.effect[String(m.displayId)] : null;
+      if (sc && EFFECTS.list[sc.effectIndex]) {
+        send({ type: 'auxFx', displayId: m.displayId, effectIndex: sc.effectIndex });
+      }
       break;
+    }
     case 'auxClosed':
       if (auxCfg[m.displayId]) { auxCfg[m.displayId].on = false; auxSave(); }
       refreshDisplays();
