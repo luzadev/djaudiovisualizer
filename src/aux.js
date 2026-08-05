@@ -36,6 +36,27 @@ function applyMode() {
   if (mode === 'follow' && followEffect) viz.setEffect(safeEffect(followEffect));
 }
 
+// Overlay text on top of whatever the mode shows (even plain black).
+const txtEl = document.getElementById('aux-text');
+const txtInner = document.getElementById('aux-text-inner');
+function applyText(c) {
+  const on = !!(c && c.on && c.value && c.value.trim());
+  txtEl.style.display = on ? 'block' : 'none';
+  if (!on) return;
+  txtInner.textContent = c.value;
+  txtEl.className = c.scroll ? 'scroll' : 'static';
+  txtEl.style.fontSize = (c.size || 8) + 'vh';
+  txtEl.style.color = c.color || '#ffffff';
+  txtEl.style.fontWeight = c.weight === false ? 'normal' : '900';
+  const pos = c.pos || 'middle';
+  txtEl.style.top = pos === 'top' ? '6%' : pos === 'bottom' ? 'auto' : '50%';
+  txtEl.style.bottom = pos === 'bottom' ? '6%' : 'auto';
+  txtEl.style.transform = pos === 'middle' ? 'translateY(-50%)' : 'none';
+  // Longer texts scroll at the same apparent speed: duration scales with length.
+  const base = 8 + c.value.length * 0.35;
+  txtEl.style.setProperty('--aux-scroll-dur', (base / (c.speed || 1)).toFixed(1) + 's');
+}
+
 // ---- audio + clock -------------------------------------------------------
 // The relay carries the primary's clock (already speed-scaled). Between frames
 // we extrapolate with the local rAF delta so motion stays 60fps-smooth, and a
@@ -71,6 +92,7 @@ window.djv.onControl((m) => {
       if (m.image) imgEl.src = toFileURL(m.image);
       else if (m.mode !== 'image') imgEl.removeAttribute('src');
       applyMode();
+      applyText(m.text);
       break;
     }
   }

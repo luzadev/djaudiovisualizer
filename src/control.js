@@ -1628,6 +1628,7 @@ function auxSendCfg(displayId) {
   if (!c || !c.on) return;
   send({ type: 'auxCfg', displayId: parseInt(displayId, 10),
     mode: c.mode || 'follow', effectIndex: c.effectIndex, image: c.image || null,
+    text: c.text || null,
     effect: currentEffect }); // so a fresh window in 'follow' mode starts aligned
 }
 
@@ -1677,10 +1678,32 @@ function renderAuxList() {
       extra = '<button class="aux-img">Carica…</button><span class="aux-img-name">' +
         (c.image ? c.image.split(/[\\/]/).pop() : 'nessuna') + '</span>';
     }
+    const tx = c.text = c.text || { on: false, value: '', pos: 'middle', size: 8, color: '#ffffff', weight: true, scroll: true, speed: 1 };
+    let textRow = '';
+    if (tx.on) {
+      textRow =
+        '<div class="aux-text-row">' +
+          '<input class="atx-val" type="text" placeholder="Testo da mostrare su questo schermo…" />' +
+          '<select class="atx-pos">' +
+            [['top', 'Alto'], ['middle', 'Centro'], ['bottom', 'Basso']].map(([v, l]) =>
+              '<option value="' + v + '"' + (v === tx.pos ? ' selected' : '') + '>' + l + '</option>').join('') +
+          '</select>' +
+          '<select class="atx-scroll">' +
+            '<option value="1"' + (tx.scroll ? ' selected' : '') + '>Scorrevole</option>' +
+            '<option value="0"' + (!tx.scroll ? ' selected' : '') + '>Fisso</option>' +
+          '</select>' +
+          '<span class="atx-lbl">Dim</span><input class="atx-size" type="range" min="3" max="20" step="0.5" value="' + tx.size + '" />' +
+          '<span class="atx-lbl">Vel</span><input class="atx-speed" type="range" min="0.2" max="3" step="0.1" value="' + tx.speed + '" />' +
+          '<input class="atx-color" type="color" value="' + tx.color + '" />' +
+          '<label class="atx-b"><input type="checkbox" class="atx-bold"' + (tx.weight ? ' checked' : '') + ' /> B</label>' +
+        '</div>';
+    }
     row.innerHTML =
       '<label class="aux-chk"><input type="checkbox" class="aux-on"' + (c.on ? ' checked' : '') + ' /> ' +
         d.label + ' <small>' + d.bounds.width + '×' + d.bounds.height + '</small></label>' +
-      '<select class="aux-mode">' + modeOpts + '</select>' + extra;
+      '<select class="aux-mode">' + modeOpts + '</select>' + extra +
+      '<button class="aux-txt' + (tx.on ? ' active' : '') + '" title="Scritta su questo schermo (sopra qualsiasi contenuto)">🔤</button>' +
+      textRow;
 
     row.querySelector('.aux-on').addEventListener('change', (e) => {
       c.on = e.target.checked; auxSave(); auxSyncAll();
@@ -1713,6 +1736,21 @@ function renderAuxList() {
         c.effectIndex = parseInt(preSel.value, 10);
         auxSave(); auxSendCfg(d.id);
       });
+    }
+    row.querySelector('.aux-txt').addEventListener('click', () => {
+      tx.on = !tx.on; auxSave(); auxSendCfg(d.id); renderAuxList();
+    });
+    const txVal = row.querySelector('.atx-val');
+    if (txVal) {
+      txVal.value = tx.value || '';
+      const live = () => { auxSave(); auxSendCfg(d.id); };
+      txVal.addEventListener('input', (e) => { tx.value = e.target.value; live(); });
+      row.querySelector('.atx-pos').addEventListener('change', (e) => { tx.pos = e.target.value; live(); });
+      row.querySelector('.atx-scroll').addEventListener('change', (e) => { tx.scroll = e.target.value === '1'; live(); });
+      row.querySelector('.atx-size').addEventListener('input', (e) => { tx.size = parseFloat(e.target.value); live(); });
+      row.querySelector('.atx-speed').addEventListener('input', (e) => { tx.speed = parseFloat(e.target.value); live(); });
+      row.querySelector('.atx-color').addEventListener('input', (e) => { tx.color = e.target.value; live(); });
+      row.querySelector('.atx-bold').addEventListener('change', (e) => { tx.weight = e.target.checked; live(); });
     }
     const imgBtn = row.querySelector('.aux-img');
     if (imgBtn) imgBtn.addEventListener('click', () => {

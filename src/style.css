@@ -963,3 +963,19 @@ kbd {
 .aux-row .aux-fx select { flex: 1; min-width: 0; padding: 4px 6px; font-size: 11px; }
 .aux-row .aux-img { flex: 0 0 auto; width: auto; padding: 4px 8px; font-size: 11px; }
 .aux-row .aux-img-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: 0.75; }
+.aux-row { flex-wrap: wrap; }
+.aux-row .aux-txt {
+  flex: 0 0 auto; width: auto; padding: 4px 8px; font-size: 12px;
+  background: transparent; border: 1px solid rgba(255,255,255,0.15); border-radius: 7px;
+}
+.aux-row .aux-txt.active { background: #2b3a6e; border-color: #5f7fe8; }
+.aux-row .aux-text-row {
+  flex: 1 0 100%; display: flex; align-items: center; gap: 6px;
+  margin-top: 4px; padding-top: 6px; border-top: 1px dashed rgba(255,255,255,0.1);
+}
+.aux-row .atx-val { flex: 1 1 160px; min-width: 0; width: auto; padding: 4px 6px; font-size: 11px; }
+.aux-row .atx-pos, .aux-row .atx-scroll { flex: 0 0 auto; width: 92px; padding: 4px 6px; font-size: 11px; }
+.aux-row .atx-lbl { flex: 0 0 auto; font-size: 10px; opacity: 0.6; }
+.aux-row .atx-size, .aux-row .atx-speed { flex: 0 0 70px; }
+.aux-row .atx-color { flex: 0 0 30px; width: 30px; height: 22px; padding: 1px; }
+.aux-row .atx-b { flex: 0 0 auto; display: flex; align-items: center; gap: 3px; font-size: 11px; }
