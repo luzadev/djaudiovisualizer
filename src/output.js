@@ -346,6 +346,7 @@ djv.onControl(async (m) => {
       if (mapping) mapping.editOn = !!m.on;
       $('#map-canvas').classList.toggle('edit', !!m.on);
       break;
+    case 'auxActive': auxActive = !!m.on; break;
     case 'glbAnims': viz.setClipFilter(m.names || []); break;
     case 'modelBpm': viz.setManualBpm(m.bpm || 0); break;
     case 'modelSpread': viz.setArmSpread(m.deg || 0); break;
@@ -541,6 +542,7 @@ djv.onControl(async (m) => {
 // ---------------------------------------------------------------- render loop
 const startTime = performance.now();
 let frames = 0, fpsT = performance.now(), fps = 0, lastReport = 0, prevBeat = 0, lastProgress = 0;
+let auxActive = false, lastAfr = 0; // aux outputs: relay audio only when some exist
 
 // ---- Auto VJ: a director that adapts the visuals to the playing track ------
 // Uses the engine's musical features (mood/bpm/drop/beatCount): switches preset
@@ -643,6 +645,15 @@ function frame() {
   }
   // Stop at the trim end point if one is set.
   audio.checkTrim();
+  // Relay the audio analysis + clock to the aux output windows (~30 Hz).
+  if (auxActive && now - lastAfr > 33) {
+    lastAfr = now;
+    djv.sendAudio({
+      t: t * speed,
+      bass: a.bass, mid: a.mid, treble: a.treble, level: a.level, beat: a.beat,
+      spectrum: a.spectrum, wave: a.wave, waveHist: a.waveHist
+    });
+  }
   // Playback progress for the currently playing file.
   if (now - lastProgress > 400) {
     lastProgress = now;

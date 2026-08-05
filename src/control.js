@@ -1604,11 +1604,131 @@ async function refreshDisplays() {
   });
   const ext = list.find(d => !d.isPrimary);
   if (ext) sel.value = ext.id;
+  // Aux candidates: every display that hosts neither the panel nor the output.
+  auxDisplays = list.filter(d => !d.isPrimary && !d.hasOutput);
+  renderAuxList();
 }
-$('#btn-display').addEventListener('click', () => {
+$('#btn-display').addEventListener('click', async () => {
   const id = parseInt($('#display-select').value, 10);
-  if (id) djv.moveOutputTo(id);
+  if (!id) return;
+  // If an aux window occupies the chosen display, turn it off first.
+  if (auxCfg[id] && auxCfg[id].on) { auxCfg[id].on = false; auxSave(); await auxSyncAll(); }
+  await djv.moveOutputTo(id);
+  refreshDisplays(); // the aux candidate list depends on where the output sits
 });
+
+// ---- Aux outputs: one independent window per extra display ----
+let auxCfg = {};        // displayId -> { on, mode, effectIndex, image }
+try { auxCfg = JSON.parse(localStorage.getItem('auxout') || '{}'); } catch (e) {}
+let auxDisplays = [];   // current candidate displays (neither panel nor output)
+function auxSave() { localStorage.setItem('auxout', JSON.stringify(auxCfg)); }
+
+function auxSendCfg(displayId) {
+  const c = auxCfg[displayId];
+  if (!c || !c.on) return;
+  send({ type: 'auxCfg', displayId: parseInt(displayId, 10),
+    mode: c.mode || 'follow', effectIndex: c.effectIndex, image: c.image || null,
+    effect: currentEffect }); // so a fresh window in 'follow' mode starts aligned
+}
+
+// Create/close aux windows so they match the enabled displays, then push each
+// one's content config (late loaders are covered by their 'auxReady' report).
+async function auxSyncAll() {
+  const ids = auxDisplays.filter(d => auxCfg[d.id] && auxCfg[d.id].on).map(d => d.id);
+  const live = await djv.auxSync(ids);
+  live.forEach(id => auxSendCfg(id));
+}
+
+const AUX_MODES = [['follow', '🔁 Segui il principale'], ['effect', '✨ Effetto dedicato'],
+  ['image', '🖼 Immagine'], ['black', '⬛ Nero']];
+
+function renderAuxList() {
+  const box = $('#aux-list');
+  if (!box) return;
+  box.innerHTML = '';
+  if (!auxDisplays.length) {
+    box.innerHTML = '<div class="hint-mini">Nessuno schermo aggiuntivo: qui compaiono i monitor oltre a Controlli e output principale.</div>';
+    return;
+  }
+  auxDisplays.forEach(d => {
+    const c = auxCfg[d.id] = auxCfg[d.id] || { on: false, mode: 'follow', effectIndex: null, image: null };
+    const row = document.createElement('div');
+    row.className = 'aux-row';
+    let modeOpts = '';
+    AUX_MODES.forEach(([v, l]) => {
+      modeOpts += '<option value="' + v + '"' + (v === (c.mode || 'follow') ? ' selected' : '') + '>' + l + '</option>';
+    });
+    let extra = '';
+    if (c.mode === 'effect') {
+      const cur = EFFECTS.list[c.effectIndex] || EFFECTS.defaults();
+      let famOpts = '', preOpts = '';
+      EFFECTS.families.forEach((name, fi) => {
+        if (/^Interattivo|^Modello 3D/.test(name)) return;
+        famOpts += '<option value="' + fi + '"' + (fi === cur.family ? ' selected' : '') + '>' + name + '</option>';
+      });
+      EFFECTS.list.forEach((e2, ei) => {
+        if (e2.family !== cur.family) return;
+        preOpts += '<option value="' + ei + '"' + (ei === c.effectIndex ? ' selected' : '') + '>' +
+          e2.name.replace(EFFECTS.families[e2.family] + ' · ', '') + '</option>';
+      });
+      extra = '<span class="aux-fx"><select class="aux-fam">' + famOpts + '</select>' +
+        '<select class="aux-pre">' + preOpts + '</select></span>';
+    } else if (c.mode === 'image') {
+      extra = '<button class="aux-img">Carica…</button><span class="aux-img-name">' +
+        (c.image ? c.image.split(/[\\/]/).pop() : 'nessuna') + '</span>';
+    }
+    row.innerHTML =
+      '<label class="aux-chk"><input type="checkbox" class="aux-on"' + (c.on ? ' checked' : '') + ' /> ' +
+        d.label + ' <small>' + d.bounds.width + '×' + d.bounds.height + '</small></label>' +
+      '<select class="aux-mode">' + modeOpts + '</select>' + extra;
+
+    row.querySelector('.aux-on').addEventListener('change', (e) => {
+      c.on = e.target.checked; auxSave(); auxSyncAll();
+    });
+    row.querySelector('.aux-mode').addEventListener('change', (e) => {
+      c.mode = e.target.value;
+      if (c.mode === 'effect' && (c.effectIndex == null || c.effectIndex < 0)) {
+        const di = EFFECTS.list.indexOf(EFFECTS.defaults());
+        c.effectIndex = di < 0 ? 12 : di; // defaults() is not in the list
+      }
+      auxSave(); auxSendCfg(d.id); renderAuxList();
+    });
+    const famSel = row.querySelector('.aux-fam');
+    if (famSel) {
+      const preSel = row.querySelector('.aux-pre');
+      famSel.addEventListener('change', () => {
+        const fam = parseInt(famSel.value, 10);
+        preSel.innerHTML = '';
+        EFFECTS.list.forEach((e2, ei) => {
+          if (e2.family !== fam) return;
+          const o = document.createElement('option');
+          o.value = ei;
+          o.textContent = e2.name.replace(EFFECTS.families[fam] + ' · ', '');
+          preSel.appendChild(o);
+        });
+        c.effectIndex = parseInt(preSel.value, 10);
+        auxSave(); auxSendCfg(d.id);
+      });
+      preSel.addEventListener('change', () => {
+        c.effectIndex = parseInt(preSel.value, 10);
+        auxSave(); auxSendCfg(d.id);
+      });
+    }
+    const imgBtn = row.querySelector('.aux-img');
+    if (imgBtn) imgBtn.addEventListener('click', () => {
+      const inp = document.createElement('input');
+      inp.type = 'file';
+      inp.accept = 'image/*';
+      inp.addEventListener('change', () => {
+        const f = inp.files[0];
+        const p = f ? djv.pathForFile(f) : null;
+        if (p) { c.image = p; auxSave(); auxSendCfg(d.id); renderAuxList(); }
+      });
+      inp.click();
+    });
+    box.appendChild(row);
+  });
+}
 $('#btn-fullscreen').addEventListener('click', () => djv.toggleOutputFullscreen());
 
 // ---- LED wall active area (pixel-mapping processors) ----
@@ -1912,6 +2032,18 @@ djv.onReport((m) => {
       }
       break;
     case 'glbClips': renderGlbClips(m.names); break;
+    case 'auxReady':
+      // An aux window finished loading: (re)send its configuration.
+      auxSendCfg(m.displayId);
+      break;
+    case 'auxClosed':
+      if (auxCfg[m.displayId]) { auxCfg[m.displayId].on = false; auxSave(); }
+      refreshDisplays();
+      break;
+    case 'displaysChanged':
+      // Monitor plugged/unplugged: refresh pickers and drop stale aux flags.
+      refreshDisplays().then(() => auxSyncAll());
+      break;
     case 'mapZones':
       // corner edits made on the output: adopt and persist
       mapCfg.zones = m.zones || [];
@@ -2041,6 +2173,6 @@ djv.onReport((m) => {
 renderLibrary();
 renderSequence();
 applyEffect(currentEffect); // push the starting effect to the output window
-refreshDisplays();
+refreshDisplays().then(() => auxSyncAll()); // recreate saved aux outputs too
 window.addEventListener('focus', refreshDisplays);
 send({ type: 'refreshDevices' });

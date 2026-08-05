@@ -943,3 +943,22 @@ kbd {
   color: #ff8a8a;
   padding: 0 3px;
 }
+
+/* Multi-output rows (tab Schermo) */
+.aux-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  margin: 4px 0;
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 9px;
+  font-size: 11.5px;
+}
+.aux-row .aux-chk { flex: 1 1 auto; display: flex; align-items: center; gap: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.aux-row .aux-chk small { opacity: 0.6; }
+.aux-row .aux-mode { flex: 0 0 auto; padding: 4px 6px; font-size: 11px; }
+.aux-row .aux-fx { flex: 1 1 auto; display: flex; gap: 4px; min-width: 0; }
+.aux-row .aux-fx select { flex: 1; min-width: 0; padding: 4px 6px; font-size: 11px; }
+.aux-row .aux-img { flex: 0 0 auto; width: auto; padding: 4px 8px; font-size: 11px; }
+.aux-row .aux-img-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: 0.75; }

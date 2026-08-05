@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; img-src 'self' blob: data: file:; style-src 'self' 'unsafe-inline'; script-src 'self'" />
+  <title>DJ Visualizer — Uscita</title>
+  <style>
+    html, body { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; overflow: hidden; cursor: none; }
+    #gl { position: absolute; inset: 0; width: 100%; height: 100%; }
+    #aux-image { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; display: none; }
+  </style>
+</head>
+<body>
+  <canvas id="gl"></canvas>
+  <img id="aux-image" alt="" />
+  <script src="shaders.js"></script>
+  <script src="effects.js"></script>
+  <script src="fluid.js"></script>
+  <script src="visualizer.js"></script>
+  <script src="aux.js"></script>
+</body>
+</html>

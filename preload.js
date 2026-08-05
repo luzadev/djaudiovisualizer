@@ -1,11 +1,20 @@
 const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
-// Each window is launched with --role=control or --role=output.
+// Each window is launched with --role=control, --role=output or --role=aux.
 const roleArg = process.argv.find(a => a.startsWith('--role='));
 const role = roleArg ? roleArg.split('=')[1] : 'control';
+// Aux outputs also get the id of the display they live on.
+const dispArg = process.argv.find(a => a.startsWith('--display='));
+const displayId = dispArg ? parseInt(dispArg.split('=')[1], 10) : -1;
 
 contextBridge.exposeInMainWorld('djv', {
   role,
+  displayId,
+  // Audio analysis relay: main output -> aux outputs (~30 Hz).
+  sendAudio: (data) => ipcRenderer.send('afr', data),
+  onAudio: (cb) => ipcRenderer.on('afr', (_e, d) => cb(d)),
+  // Create/close aux output windows to match the given display-id list.
+  auxSync: (ids) => ipcRenderer.invoke('aux:sync', ids),
   // Control -> Output commands.
   send: (msg) => ipcRenderer.send('ctl', msg),
   onControl: (cb) => ipcRenderer.on('ctl', (_e, m) => cb(m)),

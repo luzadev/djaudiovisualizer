@@ -63,6 +63,65 @@ function createOutputWindow() {
   });
 }
 
+// --- Aux output windows (true multi-output: one extra window per display) ---
+// Keyed by display id. Each loads aux.html: a lightweight visual-only renderer
+// (own effect / follow the main effect / image / black) fed with the audio
+// analysis relayed from the main output at ~30 Hz on the 'afr' channel.
+const auxWins = new Map();
+
+function tellOutputAuxActive() {
+  if (outputWin && !outputWin.isDestroyed()) {
+    outputWin.webContents.send('ctl', { type: 'auxActive', on: auxWins.size > 0 });
+  }
+}
+
+function createAuxWindow(display) {
+  const win = new BrowserWindow({
+    x: display.bounds.x, y: display.bounds.y,
+    width: display.bounds.width, height: display.bounds.height,
+    title: 'DJ Visualizer — Uscita ' + display.id,
+    backgroundColor: '#000000',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      additionalArguments: ['--role=aux', '--display=' + display.id]
+    }
+  });
+  win.loadFile(path.join(__dirname, 'src', 'aux.html'));
+  win.once('ready-to-show', () => {
+    win.setBounds({ ...display.bounds });
+    if (process.platform === 'darwin') win.setSimpleFullScreen(true);
+    else win.setFullScreen(true);
+  });
+  win.on('closed', () => {
+    if (auxWins.get(display.id) === win) auxWins.delete(display.id);
+    tellOutputAuxActive();
+    if (controlWin && !controlWin.isDestroyed()) {
+      controlWin.webContents.send('rpt', { type: 'auxClosed', displayId: display.id });
+    }
+  });
+  auxWins.set(display.id, win);
+  tellOutputAuxActive();
+  return win;
+}
+
+// Reconcile the aux window set with the wanted list of display ids.
+ipcMain.handle('aux:sync', (_e, wantedIds) => {
+  const wanted = new Set(wantedIds || []);
+  for (const [id, win] of [...auxWins]) {
+    if (!wanted.has(id)) { auxWins.delete(id); if (!win.isDestroyed()) win.destroy(); }
+  }
+  tellOutputAuxActive();
+  const displays = screen.getAllDisplays();
+  for (const id of wanted) {
+    if (auxWins.has(id)) continue;
+    const d = displays.find(x => x.id === id);
+    if (d) createAuxWindow(d);
+  }
+  return [...auxWins.keys()];
+});
+
 function createWindows() {
   const primary = screen.getPrimaryDisplay();
   const ext = externalDisplay();
@@ -95,6 +154,8 @@ function createWindows() {
   controlWin.on('closed', () => {
     quitting = true; // closing the panel ends the show: let the output close
     controlWin = null;
+    for (const win of auxWins.values()) { if (!win.isDestroyed()) win.destroy(); }
+    auxWins.clear();
     if (outputWin) outputWin.close();
     app.quit();
   });
@@ -190,6 +251,8 @@ app.whenReady().then(async () => {
   }
   await ensureMicAccess();
   createWindows();
+  screen.on('display-added', displaysChanged);
+  screen.on('display-removed', displaysChanged);
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindows();
   });
@@ -202,6 +265,18 @@ app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(
 // Control -> Output (commands).
 ipcMain.on('ctl', (_e, msg) => {
   if (outputWin && !outputWin.isDestroyed()) outputWin.webContents.send('ctl', msg);
+  // Aux outputs listen to the same channel (they pick what they care about:
+  // their own 'auxCfg' and the broadcast 'effect' for follow mode).
+  for (const win of auxWins.values()) {
+    if (!win.isDestroyed()) win.webContents.send('ctl', msg);
+  }
+});
+
+// Audio analysis frames: main output -> every aux output (never the control).
+ipcMain.on('afr', (_e, data) => {
+  for (const win of auxWins.values()) {
+    if (!win.isDestroyed()) win.webContents.send('afr', data);
+  }
 });
 
 // Output -> Control (reports: meters, device list, play state).
@@ -378,16 +453,43 @@ ipcMain.handle('svg:listBuiltin', () => {
   } catch (e) { return []; }
 });
 
+function outputDisplayId() {
+  if (!outputWin || outputWin.isDestroyed()) return -1;
+  try {
+    const b = outputWin.getBounds();
+    return screen.getDisplayNearestPoint({
+      x: b.x + Math.floor(b.width / 2), y: b.y + Math.floor(b.height / 2)
+    }).id;
+  } catch (e) { return -1; }
+}
+
 ipcMain.handle('displays:list', () => {
   const primary = screen.getPrimaryDisplay();
+  const outId = outputDisplayId();
   return screen.getAllDisplays().map((d, i) => ({
     id: d.id,
     index: i,
     label: d.label || `Display ${i + 1}`,
     bounds: d.bounds,
-    isPrimary: d.id === primary.id
+    isPrimary: d.id === primary.id,
+    hasOutput: d.id === outId,
+    hasAux: auxWins.has(d.id)
   }));
 });
+
+// Hot-plug: keep the panel's display lists fresh and drop aux windows whose
+// display disappeared (their fullscreen window would otherwise pile up on
+// another screen).
+function displaysChanged() {
+  const ids = new Set(screen.getAllDisplays().map(d => d.id));
+  for (const [id, win] of [...auxWins]) {
+    if (!ids.has(id)) { auxWins.delete(id); if (!win.isDestroyed()) win.destroy(); }
+  }
+  tellOutputAuxActive();
+  if (controlWin && !controlWin.isDestroyed()) {
+    controlWin.webContents.send('rpt', { type: 'displaysChanged' });
+  }
+}
 
 // Place the output window on a given display. On macOS we use *simple*
 // fullscreen (a borderless window covering the screen) instead of native
