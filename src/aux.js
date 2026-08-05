@@ -36,25 +36,47 @@ function applyMode() {
   if (mode === 'follow' && followEffect) viz.setEffect(safeEffect(followEffect));
 }
 
-// Overlay text on top of whatever the mode shows (even plain black).
-const txtEl = document.getElementById('aux-text');
-const txtInner = document.getElementById('aux-text-inner');
+// Overlay text on top of whatever the mode shows (even plain black): the SAME
+// ticker as the main output (structure + style.css), with the full option set
+// of the Testo tab — direction, letter effect, font, position, size, speed.
+const ticker = document.getElementById('ticker');
+const tickerTrack = document.getElementById('ticker-track');
+const tickCopies = ticker.querySelectorAll('.tick-copy');
+const sideText = document.getElementById('side-text');
+const sideCopies = sideText.querySelectorAll('.side-copy');
+function buildLetters(txt) {
+  const full = (txt || '') + '   •   ';
+  let html = '';
+  for (let i = 0; i < full.length; i++) {
+    const c = full[i];
+    const ch = c === ' ' ? ' ' : c.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+    html += '<span class="tl" style="--i:' + i + '">' + ch + '</span>';
+  }
+  return html;
+}
+function styleBoth(prop, value) { tickerTrack.style[prop] = value; sideText.style[prop] = value; }
 function applyText(c) {
   const on = !!(c && c.on && c.value && c.value.trim());
-  txtEl.style.display = on ? 'block' : 'none';
+  const dir = (c && c.dir) || 'h';
+  ticker.classList.toggle('show', on && dir !== 'sides');
+  sideText.classList.toggle('show', on && dir === 'sides');
   if (!on) return;
-  txtInner.textContent = c.value;
-  txtEl.className = c.scroll ? 'scroll' : 'static';
-  txtEl.style.fontSize = (c.size || 8) + 'vh';
-  txtEl.style.color = c.color || '#ffffff';
-  txtEl.style.fontWeight = c.weight === false ? 'normal' : '900';
-  const pos = c.pos || 'middle';
-  txtEl.style.top = pos === 'top' ? '6%' : pos === 'bottom' ? 'auto' : '50%';
-  txtEl.style.bottom = pos === 'bottom' ? '6%' : 'auto';
-  txtEl.style.transform = pos === 'middle' ? 'translateY(-50%)' : 'none';
-  // Longer texts scroll at the same apparent speed: duration scales with length.
-  const base = 8 + c.value.length * 0.35;
-  txtEl.style.setProperty('--aux-scroll-dur', (base / (c.speed || 1)).toFixed(1) + 's');
+  const h = buildLetters(c.value);
+  tickCopies.forEach(el => el.innerHTML = h);
+  sideCopies.forEach(el => el.innerHTML = h);
+  ticker.classList.remove('dir-h', 'dir-vup', 'dir-vdown');
+  if (dir !== 'sides') ticker.classList.add('dir-' + dir);
+  ticker.classList.remove('pos-bottom', 'pos-top', 'pos-middle');
+  ticker.classList.add('pos-' + (c.pos || 'bottom'));
+  styleBoth('fontFamily', c.font || "-apple-system, BlinkMacSystemFont, sans-serif");
+  styleBoth('fontSize', (c.size || 6) + 'vh');
+  styleBoth('fontWeight', c.weight === false ? '400' : '800');
+  styleBoth('color', c.color || '#ffffff');
+  [tickerTrack, sideText].forEach(el => {
+    el.classList.remove('fx-updown', 'fx-wave', 'fx-zoom', 'fx-flash', 'fx-rotate');
+    if (c.fx && c.fx !== 'none') el.classList.add('fx-' + c.fx);
+  });
+  document.documentElement.style.setProperty('--ticker-dur', (18 / (c.speed || 1)) + 's');
 }
 
 // ---- audio + clock -------------------------------------------------------
@@ -95,15 +117,32 @@ window.djv.onControl((m) => {
       applyText(m.text);
       break;
     }
+    case 'auxFx': {
+      // Scene cue targeted at aux outputs. displayId -1 = every aux window,
+      // but follow-mode windows ignore the broadcast form: they receive the
+      // same effect through the normal 'effect' broadcast and switching them
+      // to 'effect' mode would silently stop them from following afterwards.
+      if (m.displayId !== MY_ID && !(m.displayId === -1 && mode !== 'follow')) break;
+      const e = EFFECTS.list[m.effectIndex];
+      if (e) { mode = 'effect'; ownEffect = e; applyMode(); }
+      break;
+    }
   }
 });
 
 function frame() {
+  const now = performance.now();
+  clockT += (now - clockAt) / 1000;
+  clockAt = now;
   if (mode === 'follow' || mode === 'effect') {
-    const now = performance.now();
-    clockT += (now - clockAt) / 1000;
-    clockAt = now;
     viz.render(clockT, audioData || SILENT);
+  }
+  // Ticker letters glow with the music, same formula as the main output.
+  if (audioData) {
+    tickerTrack.style.setProperty('--ticker-glow',
+      (audioData.level * 24 + audioData.beat * 20).toFixed(0) + 'px');
+    sideText.style.setProperty('--ticker-glow',
+      (audioData.level * 24 + audioData.beat * 20).toFixed(0) + 'px');
   }
   requestAnimationFrame(frame);
 }

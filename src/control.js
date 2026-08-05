@@ -690,7 +690,7 @@ const IMG_POS_LABELS = { center: 'Centro', top: 'Alto', bottom: 'Basso', left: '
 function optList(pairs, sel) {
   return pairs.map(([v, l]) => '<option value="' + String(v).replace(/"/g, '&quot;') + '"' + (v === sel ? ' selected' : '') + '>' + l + '</option>').join('');
 }
-function newEffectEl(time) { return { type: 'effect', time, effectIndex: EFFECTS.list.indexOf(currentEffect), effectName: currentEffect.name, dur: 0 }; }
+function newEffectEl(time) { return { type: 'effect', time, effectIndex: EFFECTS.list.indexOf(currentEffect), effectName: currentEffect.name, dur: 0, target: 'main' }; }
 function newTextEl(time) { return { type: 'text', time, text: '', dir: 'h', fx: 'none', font: TXT_FONTS[0][0], size: 6, weight: true, color: '#ffffff', pos: 'bottom', speed: 1, dur: 0 }; }
 function newImageEl(time) { return { type: 'image', time, image: null, imageSize: 60, imagePos: 'center', dur: 0 }; }
 
@@ -736,9 +736,43 @@ function sceneActive(type, t) {
   }
   return best;
 }
+// Effect cues carry a target (main output, one aux display, or all screens):
+// each target is its own channel so cues aimed at different monitors never
+// supersede one another.
+function sceneActiveEffects(t) {
+  const best = {};
+  for (const el of activeCues) {
+    if (el.type !== 'effect' || el.time > t) continue;
+    if (el.dur && el.time + el.dur <= t) continue;
+    const k = String(el.target || 'main');
+    if (!best[k] || el.time >= best[k].time) best[k] = el;
+  }
+  return best;
+}
+function applyEffectTo(targetKey, el) {
+  const e = EFFECTS.list[el.effectIndex];
+  if (!e) return;
+  if (targetKey === 'main') applyEffect(e);
+  else if (targetKey === 'all') {
+    applyEffect(e);
+    // -1 = every aux window (follow-mode ones get it via the effect broadcast)
+    send({ type: 'auxFx', displayId: -1, effectIndex: el.effectIndex });
+  } else {
+    send({ type: 'auxFx', displayId: parseInt(targetKey, 10), effectIndex: el.effectIndex });
+  }
+}
 function advanceCues(t) {
-  const ef = sceneActive('effect', t);
-  if (ef !== lastScene.effect) { lastScene.effect = ef; if (ef && EFFECTS.list[ef.effectIndex]) applyEffect(EFFECTS.list[ef.effectIndex]); }
+  const efMap = sceneActiveEffects(t);
+  const force = lastScene.effect === undefined;
+  const prevMap = (lastScene.effect && typeof lastScene.effect === 'object') ? lastScene.effect : {};
+  const keys = new Set([...Object.keys(efMap), ...Object.keys(prevMap)]);
+  keys.forEach(k => {
+    const el = efMap[k] || null;
+    if (!force && prevMap[k] === el) return;
+    if (el) applyEffectTo(k, el); // apply-once semantics: no revert on expiry
+  });
+  lastScene.effect = efMap;
+  const ef = efMap['main'] || efMap['all'] || null;
   // Auto-blend: on a video track, when a scene effect is active, blend the video
   // ('screen') so the effect shows through underneath. Only when the user left
   // the blend at the default 'normal' — a manual choice is always respected.
@@ -971,11 +1005,25 @@ function buildSceneEditor(tr, i, li) {
     if (c.type === 'effect') {
       const ce = (c.effectIndex != null && EFFECTS.list[c.effectIndex]) ? EFFECTS.list[c.effectIndex] : null;
       const cFam = ce ? ce.family : -1;
+      // Destination screen: main output, one aux display, or all of them.
+      const tgt = String(c.target || 'main');
+      let tgtOpts = '<option value="main"' + (tgt === 'main' ? ' selected' : '') + '>🖥 Principale</option>';
+      auxDisplays.forEach(ds => {
+        tgtOpts += '<option value="' + ds.id + '"' + (tgt === String(ds.id) ? ' selected' : '') + '>🖥 ' + ds.label + '</option>';
+      });
+      tgtOpts += '<option value="all"' + (tgt === 'all' ? ' selected' : '') + '>🖥🖥 Tutti gli schermi</option>';
+      if (tgt !== 'main' && tgt !== 'all' && !auxDisplays.some(ds => String(ds.id) === tgt)) {
+        tgtOpts += '<option value="' + tgt + '" selected>🖥 Schermo scollegato</option>';
+      }
       html +=
         '<div class="cue-body">' +
           '<div class="cue-row">' +
             '<select class="cue-eff-fam" title="Categoria">' + cueFamilyOptions(cFam) + '</select>' +
             '<select class="cue-eff-pre" title="Preset"' + (cFam < 0 ? ' disabled' : '') + '>' + cuePresetOptions(cFam, c.effectIndex) + '</select>' +
+          '</div>' +
+          '<div class="cue-row">' +
+            '<span class="cue-dim">Su</span>' +
+            '<select class="cue-eff-target" title="Su quale schermo applicare l\'effetto">' + tgtOpts + '</select>' +
           '</div>' +
           '<div class="cue-row">' +
             '<button class="cue-eff-cur" title="Usa l\'effetto visibile ora">🎯 Usa corrente</button>' +
@@ -1114,6 +1162,11 @@ function buildSceneEditor(tr, i, li) {
         if (idx >= 0 && EFFECTS.list[idx]) { c.effectIndex = idx; c.effectName = EFFECTS.list[idx].name; save(); }
       });
       cueEl.querySelector('.cue-eff-cur').addEventListener('click', () => { c.effectIndex = EFFECTS.list.indexOf(currentEffect); c.effectName = currentEffect.name; save(); });
+      cueEl.querySelector('.cue-eff-target').addEventListener('change', (e) => {
+        const v = e.target.value;
+        c.target = (v === 'main' || v === 'all') ? v : parseInt(v, 10);
+        saveLive();
+      });
     } else if (c.type === 'text') {
       const ti = cueEl.querySelector('.cue-text'); ti.value = c.text || '';
       ti.addEventListener('input', (e) => { c.text = e.target.value; saveLive(); });
@@ -1678,22 +1731,25 @@ function renderAuxList() {
       extra = '<button class="aux-img">Carica…</button><span class="aux-img-name">' +
         (c.image ? c.image.split(/[\\/]/).pop() : 'nessuna') + '</span>';
     }
-    const tx = c.text = c.text || { on: false, value: '', pos: 'middle', size: 8, color: '#ffffff', weight: true, scroll: true, speed: 1 };
+    const tx = c.text = c.text || { on: false, value: '', dir: 'h', fx: 'none', font: TXT_FONTS[0][0], pos: 'bottom', size: 6, color: '#ffffff', weight: true, speed: 1 };
+    if (tx.dir === undefined) { // migrate pre-ticker configs (scroll-flag era)
+      tx.dir = 'h'; tx.fx = 'none'; tx.font = TXT_FONTS[0][0]; delete tx.scroll;
+    }
     let textRow = '';
     if (tx.on) {
       textRow =
         '<div class="aux-text-row">' +
           '<input class="atx-val" type="text" placeholder="Testo da mostrare su questo schermo…" />' +
-          '<select class="atx-pos">' +
-            [['top', 'Alto'], ['middle', 'Centro'], ['bottom', 'Basso']].map(([v, l]) =>
-              '<option value="' + v + '"' + (v === tx.pos ? ' selected' : '') + '>' + l + '</option>').join('') +
-          '</select>' +
-          '<select class="atx-scroll">' +
-            '<option value="1"' + (tx.scroll ? ' selected' : '') + '>Scorrevole</option>' +
-            '<option value="0"' + (!tx.scroll ? ' selected' : '') + '>Fisso</option>' +
-          '</select>' +
-          '<span class="atx-lbl">Dim</span><input class="atx-size" type="range" min="3" max="20" step="0.5" value="' + tx.size + '" />' +
-          '<span class="atx-lbl">Vel</span><input class="atx-speed" type="range" min="0.2" max="3" step="0.1" value="' + tx.speed + '" />' +
+        '</div>' +
+        '<div class="aux-text-row">' +
+          '<select class="atx-dir" title="Direzione">' + optList(TXT_DIRS, tx.dir) + '</select>' +
+          '<select class="atx-fx" title="Effetto lettere">' + optList(TXT_FX, tx.fx) + '</select>' +
+          '<select class="atx-font" title="Font">' + optList(TXT_FONTS, tx.font) + '</select>' +
+          '<select class="atx-pos" title="Posizione">' + optList(TXT_POS, tx.pos) + '</select>' +
+        '</div>' +
+        '<div class="aux-text-row">' +
+          '<span class="atx-lbl">Dim</span><input class="atx-size" type="range" min="2" max="18" step="0.5" value="' + tx.size + '" />' +
+          '<span class="atx-lbl">Vel</span><input class="atx-speed" type="range" min="0.2" max="4" step="0.1" value="' + tx.speed + '" />' +
           '<input class="atx-color" type="color" value="' + tx.color + '" />' +
           '<label class="atx-b"><input type="checkbox" class="atx-bold"' + (tx.weight ? ' checked' : '') + ' /> B</label>' +
         '</div>';
@@ -1745,8 +1801,10 @@ function renderAuxList() {
       txVal.value = tx.value || '';
       const live = () => { auxSave(); auxSendCfg(d.id); };
       txVal.addEventListener('input', (e) => { tx.value = e.target.value; live(); });
+      row.querySelector('.atx-dir').addEventListener('change', (e) => { tx.dir = e.target.value; live(); });
+      row.querySelector('.atx-fx').addEventListener('change', (e) => { tx.fx = e.target.value; live(); });
+      row.querySelector('.atx-font').addEventListener('change', (e) => { tx.font = e.target.value; live(); });
       row.querySelector('.atx-pos').addEventListener('change', (e) => { tx.pos = e.target.value; live(); });
-      row.querySelector('.atx-scroll').addEventListener('change', (e) => { tx.scroll = e.target.value === '1'; live(); });
       row.querySelector('.atx-size').addEventListener('input', (e) => { tx.size = parseFloat(e.target.value); live(); });
       row.querySelector('.atx-speed').addEventListener('input', (e) => { tx.speed = parseFloat(e.target.value); live(); });
       row.querySelector('.atx-color').addEventListener('input', (e) => { tx.color = e.target.value; live(); });

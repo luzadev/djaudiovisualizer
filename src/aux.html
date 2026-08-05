@@ -5,33 +5,22 @@
   <meta http-equiv="Content-Security-Policy"
         content="default-src 'self'; img-src 'self' blob: data: file:; style-src 'self' 'unsafe-inline'; script-src 'self'" />
   <title>DJ Visualizer — Uscita</title>
+  <link rel="stylesheet" href="style.css" />
   <style>
-    html, body { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; overflow: hidden; cursor: none; }
-    #gl { position: absolute; inset: 0; width: 100%; height: 100%; }
     #aux-image { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; display: none; }
-    /* Overlay text: static (centered) or scrolling marquee, over any mode */
-    #aux-text {
-      position: absolute; left: 0; width: 100%;
-      display: none; overflow: hidden; white-space: nowrap;
-      font-family: -apple-system, BlinkMacSystemFont, 'Arial Black', sans-serif;
-      text-shadow: 0 0 18px rgba(0,0,0,0.9), 0 2px 6px rgba(0,0,0,0.8);
-      pointer-events: none;
-    }
-    #aux-text.static { text-align: center; }
-    #aux-text.scroll #aux-text-inner {
-      display: inline-block; padding-left: 100vw;
-      animation: auxscroll var(--aux-scroll-dur, 14s) linear infinite;
-    }
-    @keyframes auxscroll {
-      from { transform: translateX(0); }
-      to { transform: translateX(-100%); }
-    }
   </style>
 </head>
-<body>
+<body class="hide-cursor">
   <canvas id="gl"></canvas>
   <img id="aux-image" alt="" />
-  <div id="aux-text"><span id="aux-text-inner"></span></div>
+
+  <!-- Same ticker structure (and CSS) as the main output -->
+  <div id="ticker"><div id="ticker-track"><span class="tick-copy"></span><span class="tick-copy"></span></div></div>
+  <div id="side-text">
+    <div class="side-col left"><div class="side-track"><span class="side-copy"></span><span class="side-copy"></span></div></div>
+    <div class="side-col right"><div class="side-track"><span class="side-copy"></span><span class="side-copy"></span></div></div>
+  </div>
+
   <script src="shaders.js"></script>
   <script src="effects.js"></script>
   <script src="fluid.js"></script>

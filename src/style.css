@@ -974,7 +974,9 @@ kbd {
   margin-top: 4px; padding-top: 6px; border-top: 1px dashed rgba(255,255,255,0.1);
 }
 .aux-row .atx-val { flex: 1 1 160px; min-width: 0; width: auto; padding: 4px 6px; font-size: 11px; }
-.aux-row .atx-pos, .aux-row .atx-scroll { flex: 0 0 auto; width: 92px; padding: 4px 6px; font-size: 11px; }
+.aux-row .atx-dir, .aux-row .atx-fx, .aux-row .atx-font, .aux-row .atx-pos {
+  flex: 1 1 0; min-width: 0; width: auto; padding: 4px 6px; font-size: 11px;
+}
 .aux-row .atx-lbl { flex: 0 0 auto; font-size: 10px; opacity: 0.6; }
 .aux-row .atx-size, .aux-row .atx-speed { flex: 0 0 70px; }
 .aux-row .atx-color { flex: 0 0 30px; width: 30px; height: 22px; padding: 1px; }
