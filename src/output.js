@@ -65,7 +65,18 @@ let recorder = null, recording = false, pendingRecOpts = null, recAutoStop = nul
 let recCanvas = null, recCtx = null, composeRAF = null;
 
 function pickMime() {
-  const cands = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'];
+  // H.264 first: on macOS it runs on the VideoToolbox HARDWARE encoder, whose
+  // realtime quality ceiling is far above software VP9 — the visible smearing
+  // on fast abstract motion came from that first encode. ffmpeg sniffs the
+  // container by content, so the .webm temp extension stays harmless.
+  const cands = [
+    'video/mp4;codecs=avc1.640033,mp4a.40.2',
+    'video/x-matroska;codecs=avc1',
+    'video/webm;codecs=h264,opus',
+    'video/webm;codecs=vp9,opus',
+    'video/webm;codecs=vp8,opus',
+    'video/webm'
+  ];
   for (const m of cands) if (window.MediaRecorder && MediaRecorder.isTypeSupported(m)) return m;
   return 'video/webm';
 }
@@ -179,7 +190,7 @@ async function startRecording(opts) {
     // only preserve what survives this first encode.
     recorder = new MediaRecorder(stream, {
       mimeType: pickMime(),
-      videoBitsPerSecond: 30e6,
+      videoBitsPerSecond: 50e6, // hardware H.264 barely notices; VP9 fallback undershoots anyway
       audioBitsPerSecond: 192e3
     });
     // Serialise chunk delivery: ondataavailable is async, so without a chain the
