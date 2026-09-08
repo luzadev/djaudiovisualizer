@@ -292,14 +292,16 @@ let recStream = null, recTempPath = null;
 function ffmpegPath() {
   const cands = [];
   try { cands.push(require('ffmpeg-static')); } catch (e) { /* optional */ }
-  cands.push(process.env.FFMPEG, 'ffmpeg',
+  // Absolute candidates FIRST: the packaged app launched from Finder has a
+  // minimal PATH (no /opt/homebrew/bin), so a bare 'ffmpeg' spawns ENOENT
+  // there even though the same call works when started from a terminal.
+  cands.push(process.env.FFMPEG,
     '/opt/homebrew/bin/ffmpeg', '/usr/local/bin/ffmpeg', '/usr/bin/ffmpeg',
     'C:\\ffmpeg\\bin\\ffmpeg.exe', 'C:\\Program Files\\ffmpeg\\bin\\ffmpeg.exe');
   for (const c of cands) {
-    if (!c) continue;
-    if (c === 'ffmpeg' || fs.existsSync(c)) return c;
+    if (c && fs.existsSync(c)) return c;
   }
-  return 'ffmpeg';
+  return 'ffmpeg'; // last resort: hope PATH has it
 }
 
 function transcodeToMp4(input, output, opts) {
