@@ -173,7 +173,15 @@ async function startRecording(opts) {
     const vstream = recCanvas.captureStream(30);
     const astream = audio.recordDest.stream;
     const stream = new MediaStream([...vstream.getVideoTracks(), ...astream.getAudioTracks()]);
-    recorder = new MediaRecorder(stream, { mimeType: pickMime(), videoBitsPerSecond: 12e6 });
+    // Generous bitrate: this WebM is only an intermediate (deleted after the
+    // MP4 mux) and the realtime VP9 encoder needs headroom on full-screen
+    // abstract motion — 12 Mbps left visible blocking, the ffmpeg pass can
+    // only preserve what survives this first encode.
+    recorder = new MediaRecorder(stream, {
+      mimeType: pickMime(),
+      videoBitsPerSecond: 30e6,
+      audioBitsPerSecond: 192e3
+    });
     // Serialise chunk delivery: ondataavailable is async, so without a chain the
     // header chunk could be sent after a later one and corrupt the WebM.
     let chain = Promise.resolve();

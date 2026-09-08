@@ -310,9 +310,12 @@ function transcodeToMp4(input, output, opts) {
   // Cover the target frame then centre-crop, so the chosen aspect is filled
   // without distortion.
   const vf = `scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h}`;
-  const args = ['-y', '-i', input, '-vf', vf,
-    '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p',
-    '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', output];
+  // Post-processing, not realtime: spend encode time on quality. CRF 18 +
+  // medium is visually transparent for VJ motion; -r 30 turns the recorder's
+  // variable frame timing into constant 30fps (players and socials want CFR).
+  const args = ['-y', '-i', input, '-vf', vf, '-r', '30',
+    '-c:v', 'libx264', '-preset', 'medium', '-crf', '18', '-pix_fmt', 'yuv420p',
+    '-c:a', 'aac', '-b:a', '256k', '-movflags', '+faststart', output];
   return new Promise((resolve, reject) => {
     execFile(ffmpegPath(), args, { maxBuffer: 1 << 24 }, (err, stdout, stderr) => {
       if (err) reject(new Error('ffmpeg: ' + String(stderr || err.message).slice(-500)));
