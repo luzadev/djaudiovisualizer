@@ -219,7 +219,7 @@ async function startRecording(opts) {
     // Reel mode: auto-stop after maxMs using the format chosen at start.
     if (opts && opts.maxMs > 0) {
       clearTimeout(recAutoStop);
-      recAutoStop = setTimeout(() => stopRecording({ w: opts.w, h: opts.h }), opts.maxMs);
+      recAutoStop = setTimeout(() => stopRecording({ w: opts.w, h: opts.h, cropX: opts.cropX }), opts.maxMs);
     }
     djv.report({ type: 'recState', recording: true });
   } catch (e) {
@@ -231,9 +231,32 @@ async function startRecording(opts) {
 function stopRecording(opts) {
   clearTimeout(recAutoStop); recAutoStop = null;
   if (!recording || !recorder) return;
-  pendingRecOpts = { w: opts && opts.w, h: opts && opts.h };
+  pendingRecOpts = { w: opts && opts.w, h: opts && opts.h, cropX: opts && opts.cropX };
   recorder.stop();
 }
+
+// ---- crop guide: shows the recorded area on the monitor (overlay only) ----
+const recGuideEl = document.getElementById('rec-guide');
+let recGuideCfg = null; // { on, w, h, pos }
+function updateRecGuide() {
+  const c = recGuideCfg;
+  const W = window.innerWidth, H = window.innerHeight;
+  const a = c && c.w && c.h ? c.w / c.h : 0;
+  // No guide when off or when the format already matches the screen (no crop).
+  if (!c || !c.on || !a || Math.abs(a - W / H) < 0.01) {
+    recGuideEl.classList.remove('show');
+    return;
+  }
+  let gw, gh, x, y;
+  if (a < W / H) { gh = H; gw = H * a; x = (W - gw) * (c.pos ?? 0.5); y = 0; }
+  else { gw = W; gh = W / a; x = 0; y = (H - gh) * (c.pos ?? 0.5); }
+  recGuideEl.style.left = x + 'px';
+  recGuideEl.style.top = y + 'px';
+  recGuideEl.style.width = gw + 'px';
+  recGuideEl.style.height = gh + 'px';
+  recGuideEl.classList.add('show');
+}
+window.addEventListener('resize', updateRecGuide);
 
 // Custom SVG/image source for the "SVG/Immagine" effect family. The image
 // arrives as a data: URL (same-origin) so the canvas isn't tainted and the
@@ -411,6 +434,7 @@ djv.onControl(async (m) => {
     }
     case 'recStart': startRecording(m); break;
     case 'recStop': stopRecording(m); break;
+    case 'recGuide': recGuideCfg = m; updateRecGuide(); break;
     case 'gain': audio.gain = m.value; break;
     case 'speed': speed = m.value; audio.scrollRate = m.value; break;
     case 'bandGain': audio[m.band + 'Gain'] = m.value; break;

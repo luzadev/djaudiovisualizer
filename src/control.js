@@ -1866,14 +1866,45 @@ function fmtTime(s) {
 function recTick() { $('#rec-time').textContent = fmtTime(Math.floor((Date.now() - recStartedAt) / 1000)); }
 function stopRecTimer() { if (recTimer) { clearInterval(recTimer); recTimer = null; } }
 
+// Crop position + on-screen guide for formats that differ from the screen
+// (e.g. 9:16 reels): the slider picks WHICH strip of the screen is recorded,
+// the guide draws that area on the output (overlay only — never recorded).
+let recCropCfg = { pos: 50, guide: true };
+try { recCropCfg = Object.assign(recCropCfg, JSON.parse(localStorage.getItem('reccrop') || '{}')); } catch (e) {}
+function recGuideSend() {
+  const [w, h] = $('#rec-aspect').value.split('x').map(Number);
+  send({ type: 'recGuide', on: recCropCfg.guide, w, h, pos: recCropCfg.pos / 100 });
+}
+function recCropLabel() {
+  const p = recCropCfg.pos;
+  $('#rec-crop-val').textContent = p === 50 ? 'centro' : (p < 50 ? '◀ ' + (50 - p) * 2 + '%' : (p - 50) * 2 + '% ▶');
+}
+(function recCropInit() {
+  $('#rec-crop').value = recCropCfg.pos;
+  $('#rec-guide-chk').checked = recCropCfg.guide;
+  recCropLabel();
+  $('#rec-crop').addEventListener('input', (e) => {
+    recCropCfg.pos = parseInt(e.target.value, 10);
+    localStorage.setItem('reccrop', JSON.stringify(recCropCfg));
+    recCropLabel(); recGuideSend();
+  });
+  $('#rec-guide-chk').addEventListener('change', (e) => {
+    recCropCfg.guide = e.target.checked;
+    localStorage.setItem('reccrop', JSON.stringify(recCropCfg));
+    recGuideSend();
+  });
+  $('#rec-aspect').addEventListener('change', recGuideSend);
+})();
+
 $('#btn-rec').addEventListener('click', () => {
   if (!recOn) {
     // Pass format + optional max duration so the output can auto-stop (Reel mode).
     const [w, h] = $('#rec-aspect').value.split('x').map(Number);
-    send({ type: 'recStart', w, h, maxMs: parseInt($('#rec-dur').value, 10) || 0 });
+    send({ type: 'recStart', w, h, maxMs: parseInt($('#rec-dur').value, 10) || 0, cropX: recCropCfg.pos / 100 });
+    recGuideSend();
   } else {
     const [w, h] = $('#rec-aspect').value.split('x').map(Number);
-    send({ type: 'recStop', w, h });
+    send({ type: 'recStop', w, h, cropX: recCropCfg.pos / 100 });
     stopRecTimer();
     $('#rec-label').textContent = 'Conversione MP4…';
     $('#btn-rec').disabled = true;
@@ -2171,6 +2202,7 @@ djv.onReport((m) => {
       if (ledCfg.on) ledSend();
       glbSend();
       mapSendAll();
+      recGuideSend();
       const sel = $('#device-select');
       const cur = sel.value;
       sel.innerHTML = '<option value="">— Input live (mic/line/BlackHole) —</option>';

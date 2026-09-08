@@ -319,7 +319,10 @@ function transcodeToMp4(input, output, opts) {
     // Rescale/crop needed (e.g. vertical reels) or non-H264 fallback source.
     // Post-processing, not realtime: spend encode time on quality. -r 60
     // turns the recorder's variable frame timing into constant fps.
-    const vf = `scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h}`;
+    // cropX 0..1 picks WHICH strip survives the cover-crop (0.5 = centre).
+    const p = Math.max(0, Math.min(1, (opts && opts.cropX != null) ? opts.cropX : 0.5));
+    const vf = `scale=${w}:${h}:force_original_aspect_ratio=increase,` +
+      `crop=${w}:${h}:(iw-ow)*${p.toFixed(3)}:(ih-oh)*${p.toFixed(3)}`;
     args.push('-vf', vf, '-r', '60',
       '-c:v', 'libx264', '-preset', 'slow', '-crf', '16', '-pix_fmt', 'yuv420p',
       '-c:a', 'aac', '-b:a', '256k');

@@ -427,6 +427,11 @@
           <option value="1080x1440">3:4 verticale (1080×1440)</option>
           <option value="2560x1080">21:9 cinema (2560×1080)</option>
         </select>
+        <label>Posizione taglio <span id="rec-crop-val">centro</span></label>
+        <input type="range" id="rec-crop" min="0" max="100" step="1" value="50"
+               title="Quale fascia dello schermo entra nel video quando il formato è diverso dallo schermo (es. 9:16)" />
+        <label class="chk"><input type="checkbox" id="rec-guide-chk" checked />
+          Mostra l'area registrata sul monitor (riquadro guida, non viene registrato)</label>
         <label>Durata (Reel: si ferma da solo)</label>
         <select id="rec-dur">
           <option value="0">∞ manuale</option>

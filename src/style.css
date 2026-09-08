@@ -944,6 +944,18 @@ kbd {
   padding: 0 3px;
 }
 
+/* Recording crop guide on the output (overlay only, never recorded) */
+#rec-guide {
+  position: fixed;
+  display: none;
+  border: 2px dashed rgba(130, 185, 255, 0.85);
+  box-sizing: border-box;
+  /* dim everything outside the recorded area */
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+}
+#rec-guide.show { display: block; }
+
 /* Multi-output rows (tab Schermo) */
 .aux-row {
   display: flex;
