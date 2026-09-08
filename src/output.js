@@ -181,16 +181,15 @@ async function startRecording(opts) {
     recCanvas.height = canvas.height;
     recCtx = recCanvas.getContext('2d');
     composeFrame();
-    const vstream = recCanvas.captureStream(30);
+    const vstream = recCanvas.captureStream(60);
     const astream = audio.recordDest.stream;
     const stream = new MediaStream([...vstream.getVideoTracks(), ...astream.getAudioTracks()]);
-    // Generous bitrate: this WebM is only an intermediate (deleted after the
-    // MP4 mux) and the realtime VP9 encoder needs headroom on full-screen
-    // abstract motion — 12 Mbps left visible blocking, the ffmpeg pass can
-    // only preserve what survives this first encode.
+    // Generous bitrate: this file is only an intermediate (deleted after the
+    // MP4 mux) — and when no rescale is needed it becomes the FINAL stream
+    // via remux, so the realtime hardware pass is the only encode that counts.
     recorder = new MediaRecorder(stream, {
       mimeType: pickMime(),
-      videoBitsPerSecond: 50e6, // hardware H.264 barely notices; VP9 fallback undershoots anyway
+      videoBitsPerSecond: 80e6, // 1080p60 headroom; the VP9 fallback undershoots anyway
       audioBitsPerSecond: 192e3
     });
     // Serialise chunk delivery: ondataavailable is async, so without a chain the
@@ -203,7 +202,13 @@ async function startRecording(opts) {
     recorder.onstop = async () => {
       stopCompose();
       await chain; // ensure every chunk is flushed, in order, before muxing
-      const res = await djv.recStop(pendingRecOpts || {});
+      // Tell main what the source actually is: same size + H.264 lets it
+      // remux instead of re-encoding (zero extra quality loss).
+      const res = await djv.recStop({
+        ...(pendingRecOpts || {}),
+        srcW: recCanvas.width, srcH: recCanvas.height,
+        srcH264: /avc1|h264/i.test(recorder.mimeType || '')
+      });
       recording = false;
       djv.report({ type: 'recState', recording: false });
       if (res && res.ok) djv.report({ type: 'recSaved', path: res.path, name: res.name, url: res.url });

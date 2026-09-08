@@ -309,13 +309,22 @@ function transcodeToMp4(input, output, opts) {
   const h = (opts && opts.h) || 1080;
   // Cover the target frame then centre-crop, so the chosen aspect is filled
   // without distortion.
-  const vf = `scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h}`;
-  // Post-processing, not realtime: spend encode time on quality. CRF 18 +
-  // medium is visually transparent for VJ motion; -r 30 turns the recorder's
-  // variable frame timing into constant 30fps (players and socials want CFR).
-  const args = ['-y', '-i', input, '-vf', vf, '-r', '30',
-    '-c:v', 'libx264', '-preset', 'medium', '-crf', '18', '-pix_fmt', 'yuv420p',
-    '-c:a', 'aac', '-b:a', '256k', '-movflags', '+faststart', output];
+  const args = ['-y', '-i', input];
+  if (opts && opts.srcH264 && opts.srcW === w && opts.srcH === h) {
+    // Source already matches the requested frame and is H.264: REMUX without
+    // re-encoding — the hardware realtime pass stays the only encode in the
+    // final file (zero generational loss).
+    args.push('-c', 'copy');
+  } else {
+    // Rescale/crop needed (e.g. vertical reels) or non-H264 fallback source.
+    // Post-processing, not realtime: spend encode time on quality. -r 60
+    // turns the recorder's variable frame timing into constant fps.
+    const vf = `scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h}`;
+    args.push('-vf', vf, '-r', '60',
+      '-c:v', 'libx264', '-preset', 'slow', '-crf', '16', '-pix_fmt', 'yuv420p',
+      '-c:a', 'aac', '-b:a', '256k');
+  }
+  args.push('-movflags', '+faststart', output);
   return new Promise((resolve, reject) => {
     execFile(ffmpegPath(), args, { maxBuffer: 1 << 24 }, (err, stdout, stderr) => {
       if (err) reject(new Error('ffmpeg: ' + String(stderr || err.message).slice(-500)));
