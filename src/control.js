@@ -1552,11 +1552,15 @@ function mapAddZone(src) {
   mapCfg.zones.push({ id: mapNextId++, name: 'Zona ' + mapNextId,
     src, corners: [[0.25+off, 0.25+off], [0.75+off, 0.25+off], [0.75+off, 0.75+off], [0.25+off, 0.75+off]],
     srcRect: [0, 0, 1, 1], opacity: 1 });
+  mapSel = mapCfg.zones.length - 1; mapSelC = -1;
   mapSave(); mapSendZones(); renderMapZones();
+  send({ type: 'mapSel', index: mapSel });
 }
 function renderMapZones() {
   const box = $('#map-zones');
   box.innerHTML = '';
+  if (mapSel >= mapCfg.zones.length) { mapSel = mapCfg.zones.length - 1; mapSelC = -1; }
+  mapEdDraw();
   if (!mapCfg.zones.length) {
     box.innerHTML = '<div class="hint-mini">Nessuna zona: aggiungine una qui sotto.</div>';
     return;
@@ -1631,7 +1635,15 @@ function renderMapZones() {
       z.opacity = parseFloat(e.target.value); mapSave(); mapSendZones();
     });
     row.querySelector('.mz-del').addEventListener('click', () => {
-      mapCfg.zones.splice(i, 1); mapSave(); mapSendZones(); renderMapZones();
+      mapCfg.zones.splice(i, 1);
+      if (mapSel === i) mapSel = -1; else if (mapSel > i) mapSel--;
+      mapSave(); mapSendZones(); renderMapZones();
+    });
+    if (i === mapSel) row.classList.add('sel');
+    // Clicking the row (not its controls) selects the zone in the editor.
+    row.addEventListener('mousedown', (e) => {
+      if (e.target.closest('input, select, button')) return;
+      mapSelect(i, -1);
     });
     box.appendChild(row);
   });
@@ -1653,6 +1665,196 @@ $('#map-img-input').addEventListener('change', (e) => {
   }
   e.target.value = '';
 });
+
+// ---- Mapping mini-editor: edit zones on a scaled replica of the output ----
+// On a huge LED wall the on-output handles are unusable; here the hand stays
+// on the laptop and the wall only shows the result. Coordinates are the same
+// normalized 0..1 (y-down) corners the output uses.
+let mapSel = -1;      // selected zone index
+let mapSelC = -1;     // selected corner (0 TL,1 TR,2 BR,3 BL) or -1 = whole zone
+let mapEdDrag = null; // { ci, lx, ly }
+let outBounds = null; // main output display size (set by refreshDisplays)
+const MAP_CORNER = ['alto-sx', 'alto-dx', 'basso-dx', 'basso-sx'];
+
+// Size the editor works in = the area the map canvas covers on the output.
+function mapEdSize() {
+  // ledCfg is declared further down: guard the first draw at startup (TDZ).
+  try { if (ledCfg.on && ledCfg.w > 0 && ledCfg.h > 0) return [ledCfg.w, ledCfg.h]; } catch (e) {}
+  if (outBounds) return [outBounds.width, outBounds.height];
+  return [1920, 1080];
+}
+
+let mapEdSendPending = false;
+function mapEdSync() {
+  // Coalesce drag/nudge bursts to one IPC per frame.
+  if (mapEdSendPending) return;
+  mapEdSendPending = true;
+  requestAnimationFrame(() => { mapEdSendPending = false; mapSendZones(); });
+}
+let mapEdSaveT = null;
+function mapEdSaveSoon() { clearTimeout(mapEdSaveT); mapEdSaveT = setTimeout(mapSave, 300); }
+
+function mapSelect(zi, ci) {
+  mapSel = zi; mapSelC = zi < 0 ? -1 : ci;
+  send({ type: 'mapSel', index: mapSel });
+  document.querySelectorAll('#map-zones .map-zone').forEach((r, k) => r.classList.toggle('sel', k === mapSel));
+  mapEdDraw();
+}
+
+function mapEdDraw() {
+  const cv = $('#map-editor');
+  if (!cv || !cv.clientWidth) return;
+  const [ow, oh] = mapEdSize();
+  const dpr = window.devicePixelRatio || 1;
+  const cssW = cv.clientWidth;
+  const cssH = Math.min(440, cssW * oh / ow);
+  // Keep the output aspect even when max-height clamps the box.
+  const drawW = cssH * ow / oh < cssW ? cssH * ow / oh : cssW;
+  cv.style.height = cssH + 'px';
+  if (cv.width !== Math.round(cssW * dpr) || cv.height !== Math.round(cssH * dpr)) {
+    cv.width = Math.round(cssW * dpr); cv.height = Math.round(cssH * dpr);
+  }
+  const ctx = cv.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, cssW, cssH);
+  const ox = (cssW - drawW) / 2, W = drawW, H = cssH;
+  cv._geo = { ox, W, H };
+  // output frame + 10% grid
+  ctx.fillStyle = '#000'; ctx.fillRect(ox, 0, W, H);
+  ctx.strokeStyle = 'rgba(255,255,255,0.06)'; ctx.lineWidth = 1;
+  for (let k = 1; k < 10; k++) {
+    ctx.beginPath(); ctx.moveTo(ox + W * k / 10, 0); ctx.lineTo(ox + W * k / 10, H); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(ox, H * k / 10); ctx.lineTo(ox + W, H * k / 10); ctx.stroke();
+  }
+  ctx.strokeStyle = 'rgba(255,255,255,0.25)'; ctx.strokeRect(ox + 0.5, 0.5, W - 1, H - 1);
+  const P = (c) => [ox + c[0] * W, c[1] * H];
+  mapCfg.zones.forEach((z, zi) => {
+    const sel = zi === mapSel;
+    const pts = z.corners.map(P);
+    ctx.beginPath();
+    pts.forEach((p, k) => k ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]));
+    ctx.closePath();
+    const t = z.src && z.src.type;
+    ctx.fillStyle = sel ? 'rgba(95,140,255,0.28)'
+      : (t === 'image' ? 'rgba(255,190,90,0.14)' : t === 'effect' ? 'rgba(190,120,255,0.14)' : 'rgba(120,220,200,0.14)');
+    ctx.fill();
+    ctx.lineWidth = sel ? 2 : 1.2;
+    ctx.strokeStyle = sel ? '#7fa8ff' : 'rgba(255,255,255,0.55)';
+    ctx.stroke();
+    // label at the centroid
+    const cx = pts.reduce((s, p) => s + p[0], 0) / 4, cy = pts.reduce((s, p) => s + p[1], 0) / 4;
+    ctx.font = (sel ? 'bold ' : '') + '11px -apple-system, sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = sel ? '#fff' : 'rgba(255,255,255,0.75)';
+    ctx.fillText(z.name || 'Zona', cx, cy);
+    pts.forEach((p, k) => {
+      const hot = sel && (mapSelC === k);
+      ctx.beginPath();
+      ctx.arc(p[0], p[1], hot ? 7 : (sel ? 5 : 3.5), 0, Math.PI * 2);
+      ctx.fillStyle = hot ? '#ffd24a' : (sel ? '#7fa8ff' : 'rgba(255,255,255,0.7)');
+      ctx.fill();
+    });
+  });
+  // status line
+  const st = $('#map-ed-status');
+  if (mapSel < 0 || !mapCfg.zones[mapSel]) { st.textContent = 'Clicca una zona o un angolo per selezionarlo'; return; }
+  const z = mapCfg.zones[mapSel];
+  const fmt = (c) => Math.round(c[0] * ow) + ', ' + Math.round(c[1] * oh) + ' px';
+  st.textContent = mapSelC >= 0
+    ? '● ' + z.name + ' · angolo ' + MAP_CORNER[mapSelC] + ': ' + fmt(z.corners[mapSelC])
+    : '● ' + z.name + ' · zona intera · angolo alto-sx ' + fmt(z.corners[0]);
+}
+
+(function mapEdInit() {
+  const cv = $('#map-editor');
+  const toN = (e) => {
+    const r = cv.getBoundingClientRect(), g = cv._geo || { ox: 0, W: r.width, H: r.height };
+    return [(e.clientX - r.left - g.ox) / g.W, (e.clientY - r.top) / g.H];
+  };
+  const clampC = (v) => Math.min(1.2, Math.max(-0.2, v));
+  const inside = (c, x, y) => { // even-odd point-in-polygon
+    let inn = false;
+    for (let i = 0, j = 3; i < 4; j = i++) {
+      const xi = c[i][0], yi = c[i][1], xj = c[j][0], yj = c[j][1];
+      if (((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / ((yj - yi) || 1e-9) + xi)) inn = !inn;
+    }
+    return inn;
+  };
+  cv.addEventListener('mousedown', (e) => {
+    cv.focus();
+    const [x, y] = toN(e);
+    const g = cv._geo || { W: cv.clientWidth, H: cv.clientHeight };
+    // nearest corner within 10 css px — the selected zone wins ties
+    let best = null, bd = 10;
+    const order = mapCfg.zones.map((_, i) => i).sort((a, b) => (b === mapSel) - (a === mapSel));
+    for (const zi of order) {
+      mapCfg.zones[zi].corners.forEach((c, ci) => {
+        const d = Math.hypot((c[0] - x) * g.W, (c[1] - y) * g.H);
+        if (d < bd) { bd = d; best = { zi, ci }; }
+      });
+    }
+    if (best) {
+      mapSelect(best.zi, best.ci);
+      mapEdDrag = { ci: best.ci, lx: x, ly: y };
+      return;
+    }
+    for (let zi = mapCfg.zones.length - 1; zi >= 0; zi--) {
+      if (inside(mapCfg.zones[zi].corners, x, y)) {
+        mapSelect(zi, -1);
+        mapEdDrag = { ci: -1, lx: x, ly: y };
+        return;
+      }
+    }
+    mapSelect(-1, -1);
+  });
+  window.addEventListener('mousemove', (e) => {
+    if (!mapEdDrag || mapSel < 0) return;
+    const z = mapCfg.zones[mapSel];
+    if (!z) { mapEdDrag = null; return; }
+    const [x, y] = toN(e);
+    if (mapEdDrag.ci >= 0) {
+      z.corners[mapEdDrag.ci] = [clampC(x), clampC(y)];
+    } else {
+      const dx = x - mapEdDrag.lx, dy = y - mapEdDrag.ly;
+      z.corners.forEach(c => { c[0] = clampC(c[0] + dx); c[1] = clampC(c[1] + dy); });
+      mapEdDrag.lx = x; mapEdDrag.ly = y;
+    }
+    mapEdDraw(); mapEdSync();
+  });
+  window.addEventListener('mouseup', () => {
+    if (mapEdDrag) { mapEdDrag = null; mapSave(); }
+  });
+  cv.addEventListener('keydown', (e) => {
+    // Keys typed while the editor has focus never reach the global hotkeys
+    // (arrows = images, 1-9 = effects, F, space…).
+    e.stopPropagation();
+    const z = mapCfg.zones[mapSel];
+    if (e.key === 'Tab') {
+      if (!z) return;
+      e.preventDefault();
+      // TL → TR → BR → BL → whole zone → TL …
+      const nxt = mapSelC >= 3 ? -1 : mapSelC + 1;
+      mapSelect(mapSel, e.shiftKey ? (mapSelC <= -1 ? 3 : mapSelC - 1) : nxt);
+      return;
+    }
+    if (e.key === 'Escape') { if (z) mapSelect(mapSel, -1); return; }
+    const dir = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
+    if (!dir || !z) return;
+    e.preventDefault();
+    const [ow, oh] = mapEdSize();
+    const step = e.shiftKey ? 10 : 1; // output pixels
+    const dx = dir[0] * step / ow, dy = dir[1] * step / oh;
+    const pts = mapSelC >= 0 ? [z.corners[mapSelC]] : z.corners;
+    pts.forEach(c => { c[0] = clampC(c[0] + dx); c[1] = clampC(c[1] + dy); });
+    mapEdDraw(); mapEdSync(); mapEdSaveSoon();
+  });
+  window.addEventListener('resize', mapEdDraw);
+  // The canvas has no width while its tab is hidden: draw when shown.
+  document.querySelectorAll('#tabs button').forEach(b => b.addEventListener('click', () => {
+    if (b.dataset.tab === 'mappa') requestAnimationFrame(mapEdDraw);
+  }));
+})();
+
 renderMapZones();
 
 // ---------------------------------------------------------------- displays
@@ -1668,6 +1870,9 @@ async function refreshDisplays() {
   });
   const ext = list.find(d => !d.isPrimary);
   if (ext) sel.value = ext.id;
+  const outD = list.find(d => d.hasOutput);
+  outBounds = outD ? outD.bounds : null;
+  mapEdDraw();
   // Aux candidates: every display that hosts neither the panel nor the output.
   auxDisplays = list.filter(d => !d.isPrimary && !d.hasOutput);
   renderAuxList();
@@ -1843,7 +2048,7 @@ $('#btn-fullscreen').addEventListener('click', () => djv.toggleOutputFullscreen(
 let ledCfg = { on: false, w: 1024, h: 576, x: 0, y: 0 };
 try { ledCfg = Object.assign(ledCfg, JSON.parse(localStorage.getItem('ledarea') || '{}')); } catch (e) {}
 function ledSend() { send({ type: 'ledArea', on: ledCfg.on, w: ledCfg.w, h: ledCfg.h, x: ledCfg.x, y: ledCfg.y }); }
-function ledSave() { localStorage.setItem('ledarea', JSON.stringify(ledCfg)); ledSend(); }
+function ledSave() { localStorage.setItem('ledarea', JSON.stringify(ledCfg)); ledSend(); if (window.mapEdDraw) mapEdDraw(); }
 (function ledInit() {
   $('#led-on').checked = ledCfg.on;
   const fields = [['#led-w', 'w'], ['#led-h', 'h'], ['#led-x', 'x'], ['#led-y', 'y']];

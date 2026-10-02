@@ -944,6 +944,19 @@ kbd {
   padding: 0 3px;
 }
 
+/* Mapping mini-editor (control panel): scaled replica of the output */
+.map-ed-wrap { margin: 8px 0 4px; display: flex; justify-content: center; }
+#map-editor {
+  display: block; width: 100%; max-height: 440px;
+  background: #07070c; border: 1px solid rgba(255,255,255,0.14); border-radius: 8px;
+  cursor: crosshair; outline: none;
+}
+#map-editor:focus { border-color: #5f7fe8; box-shadow: 0 0 0 2px rgba(95,127,232,0.35); }
+.map-ed-info { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; font-size: 11px; margin-bottom: 6px; }
+.map-ed-info #map-ed-status { color: #9fc0ff; }
+.map-ed-info .map-ed-keys { opacity: 0.55; }
+.map-zone.sel { border-color: #5f7fe8; background: rgba(95,127,232,0.10); }
+
 /* Recording crop guide on the output (overlay only, never recorded) */
 #rec-guide {
   position: fixed;

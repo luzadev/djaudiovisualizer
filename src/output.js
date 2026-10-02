@@ -393,6 +393,7 @@ djv.onControl(async (m) => {
       if (mapping) mapping.editOn = !!m.on;
       $('#map-canvas').classList.toggle('edit', !!m.on);
       break;
+    case 'mapSel': if (mapping) mapping.selected = m.index; break;
     case 'auxActive': auxActive = !!m.on; break;
     case 'glbAnims': viz.setClipFilter(m.names || []); break;
     case 'modelBpm': viz.setManualBpm(m.bpm || 0); break;
