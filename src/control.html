@@ -214,6 +214,14 @@
         <div class="row">
           <label class="chk"><input type="checkbox" id="map-on" /> Attiva</label>
           <label class="chk"><input type="checkbox" id="map-edit" /> Mostra maniglie anche sull'output</label>
+          <label class="chk" title="Aggancia angoli e zone alla griglia e agli angoli delle altre zone (tieni premuto Alt per disattivarlo mentre trascini)"><input type="checkbox" id="map-snap" /> 🧲 Aggancia</label>
+          <select id="map-grid" title="Passo della griglia">
+            <option value="20">Griglia 5%</option>
+            <option value="10">Griglia 10%</option>
+            <option value="40">Griglia 2,5%</option>
+            <option value="8">Griglia 1/8</option>
+            <option value="16">Griglia 1/16</option>
+          </select>
         </div>
         <div class="map-ed-wrap">
           <canvas id="map-editor" tabindex="0"></canvas>
@@ -247,6 +255,9 @@
             vede subito sul ledwall/proiettore. Per la rifinitura usa la <b>tastiera</b>
             (clicca prima sull'editor): <b>frecce</b> = 1 pixel, <b>Shift+frecce</b> = 10 pixel,
             <b>Tab</b> = passa all'angolo successivo, <b>Esc</b> = torna a muovere la zona intera.
+            Con <b>🧲 Aggancia</b> angoli e zone si agganciano alla griglia (passo
+            a scelta) e agli angoli delle altre zone, così i pannelli adiacenti combaciano
+            al pixel; tieni premuto <b>Alt</b> mentre trascini per muoverti libero.
             La riga sotto l'editor mostra la posizione in pixel. Se vuoi vedere i contorni anche
             sullo schermo, spunta <b>Mostra maniglie anche sull'output</b>.</p>
             <p><b>Opzioni per zona</b>:</p>

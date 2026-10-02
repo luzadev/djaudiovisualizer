@@ -1672,7 +1672,11 @@ $('#map-img-input').addEventListener('change', (e) => {
 // normalized 0..1 (y-down) corners the output uses.
 let mapSel = -1;      // selected zone index
 let mapSelC = -1;     // selected corner (0 TL,1 TR,2 BR,3 BL) or -1 = whole zone
-let mapEdDrag = null; // { ci, lx, ly }
+let mapEdDrag = null; // { ci, x0, y0, start: corners snapshot }
+// Snap: grid divisions per side + on/off, persisted.
+let mapSnap = { on: true, div: 10 };
+try { mapSnap = Object.assign(mapSnap, JSON.parse(localStorage.getItem('mapsnap') || '{}')); } catch (e) {}
+const MAP_SNAP_PX = 9; // capture radius in editor css pixels
 let outBounds = null; // main output display size (set by refreshDisplays)
 const MAP_CORNER = ['alto-sx', 'alto-dx', 'basso-dx', 'basso-sx'];
 
@@ -1722,10 +1726,15 @@ function mapEdDraw() {
   // output frame + 10% grid
   ctx.fillStyle = '#000'; ctx.fillRect(ox, 0, W, H);
   ctx.strokeStyle = 'rgba(255,255,255,0.06)'; ctx.lineWidth = 1;
-  for (let k = 1; k < 10; k++) {
-    ctx.beginPath(); ctx.moveTo(ox + W * k / 10, 0); ctx.lineTo(ox + W * k / 10, H); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(ox, H * k / 10); ctx.lineTo(ox + W, H * k / 10); ctx.stroke();
+  const dv = mapSnap.div;
+  ctx.strokeStyle = mapSnap.on ? 'rgba(127,168,255,0.13)' : 'rgba(255,255,255,0.06)';
+  for (let k = 1; k < dv; k++) {
+    // the centre lines are slightly stronger: handy for symmetric setups
+    ctx.globalAlpha = (k * 2 === dv) ? 1.8 : 1;
+    ctx.beginPath(); ctx.moveTo(ox + W * k / dv, 0); ctx.lineTo(ox + W * k / dv, H); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(ox, H * k / dv); ctx.lineTo(ox + W, H * k / dv); ctx.stroke();
   }
+  ctx.globalAlpha = 1;
   ctx.strokeStyle = 'rgba(255,255,255,0.25)'; ctx.strokeRect(ox + 0.5, 0.5, W - 1, H - 1);
   const P = (c) => [ox + c[0] * W, c[1] * H];
   mapCfg.zones.forEach((z, zi) => {
@@ -1765,7 +1774,21 @@ function mapEdDraw() {
     : '● ' + z.name + ' · zona intera · angolo alto-sx ' + fmt(z.corners[0]);
 }
 
+// Snap targets on one axis: grid lines (screen edges included) and the
+// corners of every OTHER zone, so adjacent panels butt together exactly.
+function mapSnapTargets(axis, skipZone) {
+  const out = [];
+  for (let k = 0; k <= mapSnap.div; k++) out.push(k / mapSnap.div);
+  mapCfg.zones.forEach((z, zi) => { if (zi !== skipZone) z.corners.forEach(c => out.push(c[axis])); });
+  return out;
+}
+
 (function mapEdInit() {
+  $('#map-snap').checked = mapSnap.on;
+  $('#map-grid').value = String(mapSnap.div);
+  const snapSave = () => { localStorage.setItem('mapsnap', JSON.stringify(mapSnap)); mapEdDraw(); };
+  $('#map-snap').addEventListener('change', (e) => { mapSnap.on = e.target.checked; snapSave(); });
+  $('#map-grid').addEventListener('change', (e) => { mapSnap.div = parseInt(e.target.value, 10) || 10; snapSave(); });
   const cv = $('#map-editor');
   const toN = (e) => {
     const r = cv.getBoundingClientRect(), g = cv._geo || { ox: 0, W: r.width, H: r.height };
@@ -1795,13 +1818,13 @@ function mapEdDraw() {
     }
     if (best) {
       mapSelect(best.zi, best.ci);
-      mapEdDrag = { ci: best.ci, lx: x, ly: y };
+      mapEdDrag = { ci: best.ci, x0: x, y0: y, start: mapCfg.zones[best.zi].corners.map(c => c.slice()) };
       return;
     }
     for (let zi = mapCfg.zones.length - 1; zi >= 0; zi--) {
       if (inside(mapCfg.zones[zi].corners, x, y)) {
         mapSelect(zi, -1);
-        mapEdDrag = { ci: -1, lx: x, ly: y };
+        mapEdDrag = { ci: -1, x0: x, y0: y, start: mapCfg.zones[zi].corners.map(c => c.slice()) };
         return;
       }
     }
@@ -1812,12 +1835,34 @@ function mapEdDraw() {
     const z = mapCfg.zones[mapSel];
     if (!z) { mapEdDrag = null; return; }
     const [x, y] = toN(e);
+    const g = cv._geo || { W: cv.clientWidth, H: cv.clientHeight };
+    let dx = x - mapEdDrag.x0, dy = y - mapEdDrag.y0;
+    const st = mapEdDrag.start;
+    // Moving points (one corner, or all four for a whole-zone drag) snap by
+    // shifting the WHOLE delta so the closest candidate lands exactly on a
+    // target — per axis, so an edge can align horizontally and vertically.
+    const moving = mapEdDrag.ci >= 0 ? [st[mapEdDrag.ci]] : st;
+    if (mapSnap.on && !e.altKey) {
+      const tx = mapSnapTargets(0, mapSel), ty = mapSnapTargets(1, mapSel);
+      const fix = (d, axis, targets, tol) => {
+        let best = null;
+        for (const p of moving) {
+          const v = p[axis] + d;
+          for (const t of targets) {
+            const off = t - v;
+            if (Math.abs(off) <= tol && (best === null || Math.abs(off) < Math.abs(best))) best = off;
+          }
+        }
+        return best === null ? d : d + best;
+      };
+      dx = fix(dx, 0, tx, MAP_SNAP_PX / g.W);
+      dy = fix(dy, 1, ty, MAP_SNAP_PX / g.H);
+    }
+    const z0 = mapCfg.zones[mapSel];
     if (mapEdDrag.ci >= 0) {
-      z.corners[mapEdDrag.ci] = [clampC(x), clampC(y)];
+      z0.corners[mapEdDrag.ci] = [clampC(st[mapEdDrag.ci][0] + dx), clampC(st[mapEdDrag.ci][1] + dy)];
     } else {
-      const dx = x - mapEdDrag.lx, dy = y - mapEdDrag.ly;
-      z.corners.forEach(c => { c[0] = clampC(c[0] + dx); c[1] = clampC(c[1] + dy); });
-      mapEdDrag.lx = x; mapEdDrag.ly = y;
+      z0.corners = st.map(c => [clampC(c[0] + dx), clampC(c[1] + dy)]);
     }
     mapEdDraw(); mapEdSync();
   });
