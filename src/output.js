@@ -377,14 +377,18 @@ djv.onControl(async (m) => {
     case 'svg': loadCustomTexture(m.dataUrl); break;
     case 'modelBg': viz.modelBg = m.mode || 'gradient'; break;
     case 'mapZones':
-      try {
-        ensureMapping().setZones((m.zones || []).map(z => Object.assign({}, z,
-          { src: z.src && z.src.type === 'image'
-            ? { type: 'image', url: toFileURL(z.src.path), path: z.src.path }
-            : (z.src && z.src.type === 'effect'
-              ? { type: 'effect', effectIndex: z.src.effectIndex }
-              : { type: 'visual' }) })));
-      } catch (e) { djv.report({ type: 'error', message: 'Mappatura: ' + e.message }); }
+      lastMapZones = m.zones || [];
+      applyMapZones();
+      break;
+    case 'mapShow':
+      mapShowIds = Array.isArray(m.ids) ? m.ids : null;
+      applyMapZones();
+      break;
+    case 'mapZoneFx':
+      // Playlist scene cue: live override of one zone's content.
+      if (m.effectIndex == null) delete mapOverrides[m.id];
+      else mapOverrides[m.id] = m.effectIndex;
+      applyMapZones();
       break;
     case 'mapOn':
       mapOn = !!m.on;
@@ -724,6 +728,25 @@ requestAnimationFrame(frame);
 
 // ------------------------------------------------------------- mapping
 let mapping = null, mapOn = false;
+// Zones as configured in the panel + live per-zone effect overrides set by
+// playlist scene cues (never written back to the panel's saved mapping).
+let lastMapZones = [], mapOverrides = {};
+let mapShowIds = null; // playlist scene: only these zone ids show content (null = all)
+function applyMapZones() {
+  try {
+    ensureMapping().setZones(lastMapZones.map(z => {
+      const ov = mapOverrides[z.id];
+      const src = ov != null ? { type: 'effect', effectIndex: ov }
+        : (z.src && z.src.type === 'image'
+          ? { type: 'image', url: toFileURL(z.src.path), path: z.src.path }
+          : (z.src && z.src.type === 'effect'
+            ? { type: 'effect', effectIndex: z.src.effectIndex }
+            : { type: 'visual' }));
+      const hidden = mapShowIds && !mapShowIds.includes(z.id);
+      return Object.assign({}, z, { src, opacity: hidden ? 0 : z.opacity });
+    }));
+  } catch (e) { djv.report({ type: 'error', message: 'Mappatura: ' + e.message }); }
+}
 
 // Videos (VJ loop + playlist video track) are DOM layers above the WebGL
 // canvas: with mapping on they would cover the zones entirely, and the zones
@@ -762,10 +785,13 @@ function ensureMapping() {
     // corner drags on the output flow back to the panel, which persists them
     mapping.onChange = (zones) => djv.report({ type: 'mapZones',
       zones: zones.map(z => ({ id: z.id, name: z.name,
-        src: z.src.type === 'image' ? { type: 'image', path: z.src.path }
-          : (z.src.type === 'effect' ? { type: 'effect', effectIndex: z.src.effectIndex }
-            : { type: 'visual' }),
-        corners: z.corners, srcRect: z.srcRect, opacity: z.opacity })) });
+        // the panel's ORIGINAL content: a scene override must never be saved
+        src: ((lastMapZones.find(o => o.id === z.id) || {}).src) ||
+          (z.src.type === 'image' ? { type: 'image', path: z.src.path }
+            : (z.src.type === 'effect' ? { type: 'effect', effectIndex: z.src.effectIndex }
+              : { type: 'visual' })),
+        corners: z.corners, srcRect: z.srcRect,
+        opacity: ((lastMapZones.find(o => o.id === z.id) || {}).opacity) ?? z.opacity })) });
   }
   return mapping;
 }

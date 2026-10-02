@@ -658,7 +658,8 @@ function hasScene(tr) {
   return !!(tr.cues && tr.cues.some(c =>
     (c.type === 'effect' && c.effectIndex != null) ||
     (c.type === 'text' && c.text && c.text.trim()) ||
-    (c.type === 'image' && c.image)));
+    (c.type === 'image' && c.image) ||
+    c.type === 'map'));
 }
 function parseTime(str) {
   str = String(str).trim();
@@ -692,6 +693,8 @@ function optList(pairs, sel) {
 }
 function newEffectEl(time) { return { type: 'effect', time, effectIndex: EFFECTS.list.indexOf(currentEffect), effectName: currentEffect.name, dur: 0, target: 'main' }; }
 function newTextEl(time) { return { type: 'text', time, text: '', dir: 'h', fx: 'none', font: TXT_FONTS[0][0], size: 6, weight: true, color: '#ffffff', pos: 'bottom', speed: 1, dur: 0 }; }
+// zones: null = every zone, otherwise the ids of the zones that show content
+function newMapEl(time) { return { type: 'map', time, on: true, zones: null, dur: 0 }; }
 function newImageEl(time) { return { type: 'image', time, image: null, imageSize: 60, imagePos: 'center', dur: 0 }; }
 
 // Convert legacy combined cues into the new per-element list (idempotent).
@@ -713,7 +716,7 @@ function migrateCues(cues) {
 }
 
 // Runtime: re-evaluate which element is active per channel and diff-apply it.
-let lastScene = { effect: null, text: null, image: null };
+let lastScene = { effect: null, text: null, image: null, map: null };
 let userTrackBlend = 'normal'; // playlist-video blend chosen by the user
 let sentTrackBlend = null;     // last blend pushed to the output (auto or manual)
 
@@ -724,7 +727,7 @@ function startCues(tr) {
   // `undefined` (not null) forces advanceCues to APPLY every channel once, so a
   // stale text/image from the previous track is cleared even when the new scene
   // has nothing active at t=0.
-  lastScene = { effect: undefined, text: undefined, image: undefined };
+  lastScene = { effect: undefined, text: undefined, image: undefined, map: undefined };
   advanceCues(0);
 }
 function sceneActive(type, t) {
@@ -750,6 +753,14 @@ function sceneActiveEffects(t) {
   return best;
 }
 function applyEffectTo(targetKey, el) {
+  if (targetKey.startsWith('zone:')) {
+    // Live override of ONE mapping zone (the saved mapping is untouched):
+    // the zone runs this preset; 'no effect' gives it back its own content.
+    const id = parseInt(targetKey.slice(5), 10);
+    const ok = el.effectIndex != null && EFFECTS.list[el.effectIndex];
+    send({ type: 'mapZoneFx', id, effectIndex: ok ? el.effectIndex : null });
+    return;
+  }
   const e = EFFECTS.list[el.effectIndex];
   if (!e) return;
   if (targetKey === 'main') applyEffect(e);
@@ -797,6 +808,17 @@ function advanceCues(t) {
   if (tx !== lastScene.text) { lastScene.text = tx; applyTextEl(tx); }
   const im = sceneActive('image', t);
   if (im !== lastScene.image) { lastScene.image = im; applyImageEl(im); }
+  const mp = sceneActive('map', t);
+  if (mp !== lastScene.map) {
+    lastScene.map = mp;
+    // Apply-once like effects: when the element ends the state stays as is.
+    if (mp) {
+      mapCfg.on = !!mp.on;
+      $('#map-on').checked = mapCfg.on;
+      send({ type: 'mapShow', ids: mp.on && Array.isArray(mp.zones) ? mp.zones : null });
+      send({ type: 'mapOn', on: mapCfg.on });
+    }
+  }
 }
 function applyTextEl(el) {
   const show = !!(el && el.text && el.text.trim());
@@ -828,7 +850,7 @@ function applyImageEl(el) {
 function refreshScenePreview(i) {
   if (i !== currentIndex) return;
   activeCues = (playlist[i].cues || []).slice().sort((a, b) => a.time - b.time);
-  lastScene = { effect: undefined, text: undefined, image: undefined };
+  lastScene = { effect: undefined, text: undefined, image: undefined, map: undefined };
   advanceCues(playCur || 0);
 }
 
@@ -985,8 +1007,8 @@ function firstPresetOfFamily(fam) {
   return -1;
 }
 
-const EL_ICON = { effect: '🌀', text: '🔤', image: '🖼' };
-const EL_LABEL = { effect: 'Effetto', text: 'Testo', image: 'Immagine' };
+const EL_ICON = { effect: '🌀', text: '🔤', image: '🖼', map: '🗺' };
+const EL_LABEL = { effect: 'Effetto', text: 'Testo', image: 'Immagine', map: 'Mappatura' };
 
 // Build the per-track scene editor: a list of independent timed elements
 // (effect / text / image), each with its own appearance time and duration.
@@ -1023,7 +1045,13 @@ function buildSceneEditor(tr, i, li) {
         tgtOpts += '<option value="' + ds.id + '"' + (tgt === String(ds.id) ? ' selected' : '') + '>🖥 ' + ds.label + '</option>';
       });
       tgtOpts += '<option value="all"' + (tgt === 'all' ? ' selected' : '') + '>🖥🖥 Tutti gli schermi</option>';
-      if (tgt !== 'main' && tgt !== 'all' && !auxDisplays.some(ds => String(ds.id) === tgt)) {
+      mapCfg.zones.forEach(z => {
+        const v = 'zone:' + z.id;
+        tgtOpts += '<option value="' + v + '"' + (tgt === v ? ' selected' : '') + '>🗺 Zona: ' + (z.name || 'Zona') + '</option>';
+      });
+      if (tgt.startsWith('zone:') && !mapCfg.zones.some(z => 'zone:' + z.id === tgt)) {
+        tgtOpts += '<option value="' + tgt + '" selected>🗺 Zona eliminata</option>';
+      } else if (tgt !== 'main' && tgt !== 'all' && !tgt.startsWith('zone:') && !auxDisplays.some(ds => String(ds.id) === tgt)) {
         tgtOpts += '<option value="' + tgt + '" selected>🖥 Schermo scollegato</option>';
       }
       html +=
@@ -1060,6 +1088,23 @@ function buildSceneEditor(tr, i, li) {
           '</div>' +
           '<div class="cue-row"><span class="cue-dim">Vel</span><input class="cue-tx-speed" type="range" min="0.2" max="4" step="0.1" value="' + c.speed + '" /></div>' +
         '</div>';
+    } else if (c.type === 'map') {
+      html +=
+        '<div class="cue-body">' +
+          '<div class="cue-row">' +
+            '<select class="cue-map-on" title="Stato della mappatura da questo momento">' +
+              '<option value="1"' + (c.on ? ' selected' : '') + '>🗺 Accendi la mappatura</option>' +
+              '<option value="0"' + (!c.on ? ' selected' : '') + '>⬜ Spegni (schermo pieno)</option>' +
+            '</select>' +
+          '</div>' +
+          (c.on ? '<div class="cue-row cue-map-zones"><span class="cue-dim">Mostra su</span>' +
+            (mapCfg.zones.length ? mapCfg.zones.map(z =>
+              '<label class="chk"><input type="checkbox" class="cue-map-z" data-id="' + z.id + '"' +
+              (!Array.isArray(c.zones) || c.zones.includes(z.id) ? ' checked' : '') + ' /> ' +
+              (z.name || 'Zona') + '</label>').join('')
+              : '<span class="cue-dim">nessuna zona: creale nel tab Mappatura</span>') +
+          '</div>' : '') +
+        '</div>';
     } else {
       html +=
         '<div class="cue-body">' +
@@ -1080,6 +1125,7 @@ function buildSceneEditor(tr, i, li) {
     '<button class="add-eff" title="Aggiungi effetto">➕🌀</button>' +
     '<button class="add-txt" title="Aggiungi testo">➕🔤</button>' +
     '<button class="add-img" title="Aggiungi immagine">➕🖼</button>' +
+    '<button class="add-map" title="Accendi/spegni la mappatura a questo punto">➕🗺</button>' +
     '<button class="se-clear">🗑 Scena</button>' +
   '</div>' +
   (tr.isInterlude
@@ -1175,7 +1221,7 @@ function buildSceneEditor(tr, i, li) {
       cueEl.querySelector('.cue-eff-cur').addEventListener('click', () => { c.effectIndex = EFFECTS.list.indexOf(currentEffect); c.effectName = currentEffect.name; save(); });
       cueEl.querySelector('.cue-eff-target').addEventListener('change', (e) => {
         const v = e.target.value;
-        c.target = (v === 'main' || v === 'all') ? v : parseInt(v, 10);
+        c.target = (v === 'main' || v === 'all' || v.startsWith('zone:')) ? v : parseInt(v, 10);
         saveLive();
       });
     } else if (c.type === 'text') {
@@ -1189,6 +1235,14 @@ function buildSceneEditor(tr, i, li) {
       cueEl.querySelector('.cue-tx-bold').addEventListener('change', (e) => { c.weight = e.target.checked; saveLive(); });
       cueEl.querySelector('.cue-tx-color').addEventListener('input', (e) => { c.color = e.target.value; saveLive(); });
       cueEl.querySelector('.cue-tx-speed').addEventListener('input', (e) => { c.speed = parseFloat(e.target.value); saveLive(); });
+    } else if (c.type === 'map') {
+      cueEl.querySelector('.cue-map-on').addEventListener('change', (e) => { c.on = e.target.value === '1'; save(); });
+      cueEl.querySelectorAll('.cue-map-z').forEach(cb => cb.addEventListener('change', () => {
+        const ids = [...cueEl.querySelectorAll('.cue-map-z')].filter(x => x.checked).map(x => parseInt(x.dataset.id, 10));
+        // every zone ticked = null, so zones created later are included too
+        c.zones = ids.length === mapCfg.zones.length ? null : ids;
+        saveLive();
+      }));
     } else {
       cueEl.querySelector('.cue-img').addEventListener('click', () => { sceneImgTarget = i; sceneCueTarget = ci; $('#scene-img-input').click(); });
       cueEl.querySelector('.cue-img-clear').addEventListener('click', () => { c.image = null; save(); });
@@ -1205,6 +1259,7 @@ function buildSceneEditor(tr, i, li) {
   ed.querySelector('.add-eff').addEventListener('click', () => addEl(newEffectEl));
   ed.querySelector('.add-txt').addEventListener('click', () => addEl(newTextEl));
   ed.querySelector('.add-img').addEventListener('click', () => addEl(newImageEl));
+  ed.querySelector('.add-map').addEventListener('click', () => addEl(newMapEl));
   ed.querySelector('.se-clear').addEventListener('click', () => { tr.cues = []; sceneEditing = -1; save(); });
   const gapInput = ed.querySelector('.cue-gap');
   if (gapInput) gapInput.addEventListener('change', (e) => { tr.gap = Math.max(0, parseFloat(e.target.value) || 0); savePlaylistState(); renderPlaylist(); });
@@ -1650,7 +1705,9 @@ function renderMapZones() {
 }
 $('#map-on').checked = mapCfg.on;
 $('#map-on').addEventListener('change', (e) => {
-  mapCfg.on = e.target.checked; mapSave(); send({ type: 'mapOn', on: mapCfg.on });
+  mapCfg.on = e.target.checked; mapSave();
+  send({ type: 'mapShow', ids: null }); // manual toggle: every zone visible
+  send({ type: 'mapOn', on: mapCfg.on });
 });
 $('#map-edit').addEventListener('change', (e) => send({ type: 'mapEdit', on: e.target.checked }));
 $('#map-add-vis').addEventListener('click', () => mapAddZone({ type: 'visual' }));
@@ -2267,7 +2324,7 @@ function playPad(i) {
   clearGap();
   playbackOwner = 'pad';
   activePad = i; padPlaying = true;
-  activeCues = []; firedCue = -1; lastScene = { effect: null, text: null, image: null }; // pads don't run playlist cues
+  activeCues = []; firedCue = -1; lastScene = { effect: null, text: null, image: null, map: null }; // pads don't run playlist cues
   playCur = 0; playDur = durations[p.path] || 0;
   // The playlist is no longer the active source.
   currentIndex = -1; isPlaying = false; renderPlaylist();
