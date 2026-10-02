@@ -1006,3 +1006,5 @@ kbd {
 .aux-row .atx-size, .aux-row .atx-speed { flex: 0 0 70px; }
 .aux-row .atx-color { flex: 0 0 30px; width: 30px; height: 22px; padding: 1px; }
 .aux-row .atx-b { flex: 0 0 auto; display: flex; align-items: center; gap: 3px; font-size: 11px; }
+.map-ed-info #map-straighten { width: auto; padding: 3px 10px; font-size: 11px; }
+body.control #map-grid { width: auto; flex: 0 0 auto; padding: 3px 8px; font-size: 11px; }

@@ -1705,6 +1705,40 @@ function mapSelect(zi, ci) {
   mapEdDraw();
 }
 
+// Edge straightness in OUTPUT pixels. Edges: top TL→TR and bottom BR→BL
+// should be horizontal, right TR→BR and left BL→TL vertical. 'off' = how far
+// the far end strays from the axis; under half a pixel the edge IS straight
+// on the real screen.
+const MAP_EDGES = [
+  { name: 'sopra', a: 0, b: 1, horiz: true, arrow: '↑' },
+  { name: 'destra', a: 1, b: 2, horiz: false, arrow: '→' },
+  { name: 'sotto', a: 2, b: 3, horiz: true, arrow: '↓' },
+  { name: 'sinistra', a: 3, b: 0, horiz: false, arrow: '←' }
+];
+function mapEdgeInfo(z) {
+  const [ow, oh] = mapEdSize();
+  return MAP_EDGES.map(ed => {
+    const A = z.corners[ed.a], B = z.corners[ed.b];
+    const dx = (B[0] - A[0]) * ow, dy = (B[1] - A[1]) * oh;
+    const off = ed.horiz ? Math.abs(dy) : Math.abs(dx);
+    const len = ed.horiz ? Math.abs(dx) : Math.abs(dy);
+    const deg = Math.atan2(off, Math.max(1e-6, len)) * 180 / Math.PI;
+    return { ...ed, off, deg, ok: off < 0.5 };
+  });
+}
+
+// Square the zone up: horizontal edges take the average y of their two ends,
+// vertical edges the average x — the closest axis-aligned rectangle.
+function mapStraighten(zi) {
+  const z = mapCfg.zones[zi];
+  if (!z) return;
+  const c = z.corners;
+  const top = (c[0][1] + c[1][1]) / 2, bot = (c[2][1] + c[3][1]) / 2;
+  const left = (c[0][0] + c[3][0]) / 2, right = (c[1][0] + c[2][0]) / 2;
+  z.corners = [[left, top], [right, top], [right, bot], [left, bot]];
+  mapSave(); mapSendZones(); mapEdDraw();
+}
+
 function mapEdDraw() {
   const cv = $('#map-editor');
   if (!cv || !cv.clientWidth) return;
@@ -1747,9 +1781,26 @@ function mapEdDraw() {
     ctx.fillStyle = sel ? 'rgba(95,140,255,0.28)'
       : (t === 'image' ? 'rgba(255,190,90,0.14)' : t === 'effect' ? 'rgba(190,120,255,0.14)' : 'rgba(120,220,200,0.14)');
     ctx.fill();
-    ctx.lineWidth = sel ? 2 : 1.2;
-    ctx.strokeStyle = sel ? '#7fa8ff' : 'rgba(255,255,255,0.55)';
-    ctx.stroke();
+    // Edges one by one: perfectly horizontal/vertical ones turn green;
+    // on the selected zone the crooked ones show their deviation.
+    mapEdgeInfo(z).forEach(ed => {
+      const A = pts[ed.a], B = pts[ed.b];
+      ctx.beginPath(); ctx.moveTo(A[0], A[1]); ctx.lineTo(B[0], B[1]);
+      ctx.lineWidth = ed.ok ? (sel ? 3 : 2) : (sel ? 2 : 1.2);
+      ctx.strokeStyle = ed.ok ? (sel ? '#4dff8f' : 'rgba(77,255,143,0.7)')
+        : (sel ? '#7fa8ff' : 'rgba(255,255,255,0.55)');
+      ctx.stroke();
+      if (sel && !ed.ok) {
+        const mx = (A[0] + B[0]) / 2, my = (A[1] + B[1]) / 2;
+        const txt = ed.deg.toFixed(1) + '°';
+        ctx.font = 'bold 10px -apple-system, sans-serif';
+        const tw = ctx.measureText(txt).width + 8;
+        ctx.fillStyle = 'rgba(255,170,60,0.92)';
+        ctx.fillRect(mx - tw / 2, my - 8, tw, 16);
+        ctx.fillStyle = '#111'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(txt, mx, my);
+      }
+    });
     // label at the centroid
     const cx = pts.reduce((s, p) => s + p[0], 0) / 4, cy = pts.reduce((s, p) => s + p[1], 0) / 4;
     ctx.font = (sel ? 'bold ' : '') + '11px -apple-system, sans-serif';
@@ -1769,21 +1820,29 @@ function mapEdDraw() {
   if (mapSel < 0 || !mapCfg.zones[mapSel]) { st.textContent = 'Clicca una zona o un angolo per selezionarlo'; return; }
   const z = mapCfg.zones[mapSel];
   const fmt = (c) => Math.round(c[0] * ow) + ', ' + Math.round(c[1] * oh) + ' px';
-  st.textContent = mapSelC >= 0
+  const edges = mapEdgeInfo(z).map(ed => ed.arrow + ' ' + (ed.ok ? '✓' : ed.deg.toFixed(1) + '° (' + ed.off.toFixed(1) + 'px)')).join('  ');
+  st.textContent = (mapSelC >= 0
     ? '● ' + z.name + ' · angolo ' + MAP_CORNER[mapSelC] + ': ' + fmt(z.corners[mapSelC])
-    : '● ' + z.name + ' · zona intera · angolo alto-sx ' + fmt(z.corners[0]);
+    : '● ' + z.name + ' · zona intera · angolo alto-sx ' + fmt(z.corners[0])) +
+    '   |   lati: ' + edges;
 }
 
 // Snap targets on one axis: grid lines (screen edges included) and the
 // corners of every OTHER zone, so adjacent panels butt together exactly.
-function mapSnapTargets(axis, skipZone) {
+function mapSnapTargets(axis, skipZone, ownCorner) {
   const out = [];
   for (let k = 0; k <= mapSnap.div; k++) out.push(k / mapSnap.div);
-  mapCfg.zones.forEach((z, zi) => { if (zi !== skipZone) z.corners.forEach(c => out.push(c[axis])); });
+  mapCfg.zones.forEach((z, zi) => {
+    if (zi !== skipZone) { z.corners.forEach(c => out.push(c[axis])); return; }
+    // Dragging ONE corner: the other corners of the same zone are targets
+    // too, so an edge snaps perfectly straight.
+    if (ownCorner >= 0) z.corners.forEach((c, ci) => { if (ci !== ownCorner) out.push(c[axis]); });
+  });
   return out;
 }
 
 (function mapEdInit() {
+  $('#map-straighten').addEventListener('click', () => { if (mapSel >= 0) mapStraighten(mapSel); });
   $('#map-snap').checked = mapSnap.on;
   $('#map-grid').value = String(mapSnap.div);
   const snapSave = () => { localStorage.setItem('mapsnap', JSON.stringify(mapSnap)); mapEdDraw(); };
@@ -1843,7 +1902,7 @@ function mapSnapTargets(axis, skipZone) {
     // target — per axis, so an edge can align horizontally and vertically.
     const moving = mapEdDrag.ci >= 0 ? [st[mapEdDrag.ci]] : st;
     if (mapSnap.on && !e.altKey) {
-      const tx = mapSnapTargets(0, mapSel), ty = mapSnapTargets(1, mapSel);
+      const tx = mapSnapTargets(0, mapSel, mapEdDrag.ci), ty = mapSnapTargets(1, mapSel, mapEdDrag.ci);
       const fix = (d, axis, targets, tol) => {
         let best = null;
         for (const p of moving) {
@@ -1883,6 +1942,7 @@ function mapSnapTargets(axis, skipZone) {
       return;
     }
     if (e.key === 'Escape') { if (z) mapSelect(mapSel, -1); return; }
+    if ((e.key === 'r' || e.key === 'R') && z && !e.metaKey && !e.ctrlKey) { mapStraighten(mapSel); return; }
     const dir = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
     if (!dir || !z) return;
     e.preventDefault();
