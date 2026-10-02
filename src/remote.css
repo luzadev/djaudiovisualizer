@@ -151,10 +151,17 @@ select { appearance: none; -webkit-appearance: none; width: 100%; background-col
 /* scene elements of the current track */
 .cap-hint { font-size: 10.5px; letter-spacing: 0.5px; color: var(--dim); font-weight: 600; }
 .cues { display: flex; flex-direction: column; gap: 7px; }
+.cue-wrap { display: flex; gap: 7px; }
 .cue {
+  flex: 1; min-width: 0;
   display: grid; grid-template-columns: 30px 52px 1fr; align-items: center; gap: 8px;
   text-align: left; min-height: 52px; padding: 8px 12px; font-size: 14px;
 }
+.cue-stop { flex: 0 0 52px; font-size: 18px; padding: 0; color: var(--red); border-color: rgba(255, 61, 110, 0.5); }
+.cue-stop:active { box-shadow: 0 0 18px rgba(255, 61, 110, 0.7); }
+#scene-hint { margin: -4px 0 10px; }
+#scene-card.halted .cues { opacity: 0.45; }
+#btn-scene-stop.halted { color: var(--lime); border-color: var(--lime); }
 .cue .ico { font-size: 20px; text-align: center; }
 .cue .at { font-family: var(--display); font-weight: 800; font-size: 11px; color: var(--cyan); }
 .cue .lbl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

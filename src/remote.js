@@ -37,6 +37,7 @@
   $('#btn-blackout').addEventListener('click', () => cmd('blackout', { on: !(st && st.blackout) }));
   $('#btn-freeze').addEventListener('click', () => cmd('freeze', { on: !(st && st.freeze) }));
   $('#btn-map').addEventListener('click', () => cmd('mapOn', { on: !(st && st.map.on) }));
+  $('#btn-scene-stop').addEventListener('click', () => cmd(st && st.sceneHalted ? 'sceneResume' : 'sceneStop'));
   $('#btn-allzones').addEventListener('click', () => cmd('mapShow', { ids: null }));
   $('#fam').addEventListener('change', (e) => { if (e.target.value !== '') cmd('fxFamily', { fam: parseInt(e.target.value, 10) }); });
 
@@ -63,14 +64,22 @@
     $('#scene-card').hidden = !sc.length;
     if (changed('scene', sc.map(c => [c.i, c.type, c.time, c.label]))) {
       const ICO = { effect: '🌀', text: '🔤', image: '🖼', video: '🎞', map: '🗺' };
-      $('#scene').innerHTML = sc.map(c => '<button class="cue" data-i="' + c.i + '">' +
+      $('#scene').innerHTML = sc.map(c => '<div class="cue-wrap"><button class="cue" data-i="' + c.i + '">' +
         '<span class="ico">' + (ICO[c.type] || '•') + '</span>' +
         '<span class="at">' + fmt(c.time) + '</span>' +
-        '<span class="lbl">' + esc(c.label) + '</span></button>').join('');
+        '<span class="lbl">' + esc(c.label) + '</span></button>' +
+        '<button class="cue-stop" data-i="' + c.i + '" hidden aria-label="Ferma">■</button></div>').join('');
       $('#scene').querySelectorAll('.cue').forEach(b => b.addEventListener('click', () => cmd('cue', { i: +b.dataset.i })));
+      $('#scene').querySelectorAll('.cue-stop').forEach(b => b.addEventListener('click', () => cmd('cueStop', { i: +b.dataset.i })));
     }
     const liveSet = new Set(sc.filter(c => c.live).map(c => c.i));
     $('#scene').querySelectorAll('.cue').forEach(b => b.classList.toggle('live', liveSet.has(+b.dataset.i)));
+    $('#scene').querySelectorAll('.cue-stop').forEach(b => { b.hidden = !liveSet.has(+b.dataset.i); });
+    $('#scene-card').classList.toggle('halted', !!s.sceneHalted);
+    $('#btn-scene-stop').classList.toggle('halted', !!s.sceneHalted);
+    $('#btn-scene-stop').textContent = s.sceneHalted ? '▶ RIPRENDI' : '■ FERMA SCENA';
+    $('#scene-hint').textContent = s.sceneHalted ? 'scena ferma: nessun elemento parte finché non riprendi'
+      : 'tocca un elemento per lanciarlo ora · ■ per fermarlo';
 
     // effects
     $('#fx-name').textContent = s.effect || '—';

@@ -777,6 +777,9 @@ function startCues(tr) {
   // has nothing active at t=0.
   lastScene = { effect: undefined, text: undefined, image: undefined, map: undefined, video: undefined };
   send({ type: 'mapZoneReset' }); // zones fall back to their Mappatura content
+  sceneHalted = false;
+  firedByHand.clear();
+  sceneBaseEffect = currentEffect; // what 'stop' on the main effect returns to
   advanceCues(0);
 }
 function sceneActive(type, t) {
@@ -832,7 +835,12 @@ function applyEffectTo(targetKey, el) {
     send({ type: 'auxFx', displayId: id, effectIndex: el.effectIndex });
   }
 }
+// 'Ferma scena' (phone remote): the rest of this track's timeline is skipped
+// until 'Riprendi' or the next track.
+let sceneHalted = false;
+let sceneBaseEffect = null;
 function advanceCues(t) {
+  if (sceneHalted) return;
   const efMap = sceneActiveEffects(t);
   const force = lastScene.effect === undefined;
   const prevMap = (lastScene.effect && typeof lastScene.effect === 'object') ? lastScene.effect : {};
@@ -895,6 +903,38 @@ function fireCue(el) {
   else if (el.type === 'image') applyImageTo(k, el);
   else if (el.type === 'video') applyVideoTo(k, el);
   else if (el.type === 'map') applyMapEl(el);
+}
+
+// Undo what one element put on screen.
+function stopCue(el) {
+  const k = String(el.target || 'main');
+  if (el.type === 'effect') {
+    if (k === 'main' || k === 'all') { if (sceneBaseEffect) applyEffect(sceneBaseEffect); }
+    if (k === 'all') Object.keys(auxCfg).forEach(id => auxSendCfg(id));
+    else if (k.startsWith('zone:')) send({ type: 'mapZoneSet', id: zoneIdOf(k), kind: 'effect', data: null });
+    else if (k !== 'main') auxSendCfg(k); // aux display back to its own setting
+  } else if (el.type === 'text') applyTextTo(k, null);
+  else if (el.type === 'image') applyImageTo(k, null);
+  else if (el.type === 'video') applyVideoTo(k, null);
+  else if (el.type === 'map') applyMapEl({ on: false });
+}
+// Stop the whole scene: clear everything it shows and freeze its timeline.
+function stopScene() {
+  sceneHalted = true;
+  firedByHand.clear();
+  applyTextEl(null);
+  applyImageEl(null);
+  send({ type: 'mapZoneReset' });
+  send({ type: 'mapShow', ids: null });
+  if (sceneBaseEffect) applyEffect(sceneBaseEffect);
+  Object.keys(auxCfg).forEach(id => auxSendCfg(id));
+}
+function resumeScene() {
+  sceneHalted = false;
+  firedByHand.clear();
+  lastScene = { effect: undefined, text: undefined, image: undefined, map: undefined, video: undefined };
+  send({ type: 'mapZoneReset' });
+  advanceCues(sceneTime());
 }
 
 // Human-readable line for a scene element (phone remote list).
@@ -2879,6 +2919,17 @@ function remoteCommand(m) {
       }
       break;
     }
+    case 'cueStop': {
+      const tr = playlist[currentIndex];
+      const el = tr && tr.cues && tr.cues[m.i];
+      if (el) {
+        firedByHand.set(cueChannel(el), { el: null, base: timelineByChannel(sceneTime()).get(cueChannel(el)) || null });
+        stopCue(el);
+      }
+      break;
+    }
+    case 'sceneStop': stopScene(); break;
+    case 'sceneResume': resumeScene(); break;
   }
   pushRemoteState();
 }
@@ -2903,10 +2954,10 @@ function timelineByChannel(t) {
 const sceneTime = () => segTimer ? (segBase + (playCur || 0)) : (playCur || 0);
 function remoteScene(tr) {
   if (!tr || !tr.cues || !tr.cues.length) return [];
-  const tl = timelineByChannel(sceneTime());
+  const tl = sceneHalted ? new Map() : timelineByChannel(sceneTime());
   for (const [ch, f] of [...firedByHand]) {
-    if ((tl.get(ch) || null) !== f.base || !tr.cues.includes(f.el)) { firedByHand.delete(ch); continue; }
-    tl.set(ch, f.el);
+    if ((tl.get(ch) || null) !== f.base || (f.el && !tr.cues.includes(f.el))) { firedByHand.delete(ch); continue; }
+    if (f.el) tl.set(ch, f.el); else tl.delete(ch); // null = stopped by hand
   }
   const live = new Set(tl.values());
   return tr.cues.map((c, i) => ({ i, type: c.type, time: c.time || 0, dur: c.dur || 0,
@@ -2924,6 +2975,7 @@ function pushRemoteState() {
     tracks: playlist.slice(0, 60).map(t => (t.isInterlude ? '✨ ' : '') + t.name),
     sceneCounts: playlist.slice(0, 60).map(t => (t.cues || []).length),
     scene: remoteScene(tr),
+    sceneHalted,
     effect: currentEffect ? currentEffect.name : '',
     family: currentEffect ? currentEffect.family : -1,
     families: remoteFamilies,
