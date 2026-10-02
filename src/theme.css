@@ -1,0 +1,385 @@
+/* =====================================================================
+   NEON GRID — futuristic theme for the CONTROL PANEL only.
+   Loaded after style.css by control.html; every rule is scoped to
+   body.control so the output and aux windows are never affected.
+   Fonts are bundled (src/fonts, SIL OFL) so the look works offline.
+   ===================================================================== */
+
+@font-face { font-family: 'Orbitron'; font-weight: 600; font-display: swap; src: url('fonts/orbitron-latin-600-normal.woff2') format('woff2'); }
+@font-face { font-family: 'Orbitron'; font-weight: 800; font-display: swap; src: url('fonts/orbitron-latin-800-normal.woff2') format('woff2'); }
+@font-face { font-family: 'Rajdhani'; font-weight: 500; font-display: swap; src: url('fonts/rajdhani-latin-500-normal.woff2') format('woff2'); }
+@font-face { font-family: 'Rajdhani'; font-weight: 600; font-display: swap; src: url('fonts/rajdhani-latin-600-normal.woff2') format('woff2'); }
+@font-face { font-family: 'Rajdhani'; font-weight: 700; font-display: swap; src: url('fonts/rajdhani-latin-700-normal.woff2') format('woff2'); }
+
+body.control {
+  --ng-bg: #04050b;
+  --ng-panel: rgba(12, 16, 32, 0.62);
+  --ng-panel-hi: rgba(18, 24, 48, 0.78);
+  --ng-line: rgba(120, 200, 255, 0.14);
+  --ng-cyan: #2ef2ff;
+  --ng-blue: #4d7cff;
+  --ng-mag: #ff2bd6;
+  --ng-lime: #7dff8a;
+  --ng-text: #dbe9ff;
+  --ng-dim: rgba(190, 215, 255, 0.55);
+  --ng-glow-c: 0 0 14px rgba(46, 242, 255, 0.45);
+  --ng-glow-m: 0 0 16px rgba(255, 43, 214, 0.45);
+  --ng-grad: linear-gradient(90deg, var(--ng-cyan), var(--ng-blue) 50%, var(--ng-mag));
+  --ng-ui: 'Rajdhani', 'Avenir Next Condensed', 'Arial Narrow', system-ui, sans-serif;
+  --ng-display: 'Orbitron', 'Rajdhani', system-ui, sans-serif;
+
+  color: var(--ng-text);
+  font-family: var(--ng-ui);
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0.15px;
+  /* deep space + two nebula glows + a faint perspective-free grid */
+  background:
+    radial-gradient(900px 520px at 8% -8%, rgba(46, 242, 255, 0.13), transparent 60%),
+    radial-gradient(800px 600px at 105% 12%, rgba(255, 43, 214, 0.12), transparent 60%),
+    radial-gradient(700px 500px at 50% 120%, rgba(77, 124, 255, 0.14), transparent 60%),
+    linear-gradient(rgba(120, 200, 255, 0.045) 1px, transparent 1px) 0 0 / 34px 34px,
+    linear-gradient(90deg, rgba(120, 200, 255, 0.045) 1px, transparent 1px) 0 0 / 34px 34px,
+    var(--ng-bg);
+  background-attachment: fixed;
+}
+body.control ::selection { background: rgba(255, 43, 214, 0.45); color: #fff; }
+
+/* ---------- top bar ---------- */
+body.control #topbar {
+  position: relative;
+  align-items: center;
+  padding: 14px 18px 12px;
+  background: linear-gradient(180deg, rgba(8, 12, 26, 0.92), rgba(8, 12, 26, 0.55));
+  border-bottom: 1px solid transparent;
+  backdrop-filter: blur(10px);
+}
+body.control #topbar::after { /* glowing hairline */
+  content: ''; position: absolute; left: 0; right: 0; bottom: -1px; height: 1px;
+  background: var(--ng-grad); box-shadow: 0 0 10px rgba(46, 242, 255, 0.6);
+  opacity: 0.85;
+}
+body.control #topbar strong {
+  font-family: var(--ng-display);
+  font-weight: 800;
+  font-size: 17px;
+  letter-spacing: 2.5px;
+  text-transform: uppercase;
+  background: linear-gradient(90deg, #ffffff, var(--ng-cyan) 35%, var(--ng-mag));
+  -webkit-background-clip: text; background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 0 10px rgba(46, 242, 255, 0.35));
+}
+body.control #topbar #status {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: var(--ng-display); font-weight: 600;
+  font-size: 10.5px; letter-spacing: 1px; opacity: 1;
+  color: var(--ng-cyan);
+  padding: 5px 12px 5px 22px; position: relative;
+  border: 1px solid rgba(46, 242, 255, 0.35);
+  border-radius: 999px;
+  background: rgba(46, 242, 255, 0.06);
+  box-shadow: inset 0 0 12px rgba(46, 242, 255, 0.08);
+}
+body.control #topbar #status::before { /* live LED */
+  content: ''; position: absolute; left: 9px; top: 50%; width: 7px; height: 7px;
+  margin-top: -3.5px; border-radius: 50%;
+  background: var(--ng-lime); box-shadow: 0 0 8px var(--ng-lime);
+  animation: ng-pulse 1.6s ease-in-out infinite;
+}
+@keyframes ng-pulse { 50% { opacity: 0.35; box-shadow: 0 0 2px var(--ng-lime); } }
+
+/* ---------- tab bar ---------- */
+body.control #tabs {
+  gap: 0;
+  padding: 8px 8px 0;
+  scrollbar-width: none;
+  background: rgba(6, 9, 20, 0.7);
+  border-bottom: 1px solid var(--ng-line);
+  backdrop-filter: blur(10px);
+}
+body.control #tabs button {
+  position: relative;
+  font-family: var(--ng-ui);
+  font-weight: 600;
+  font-size: 12.5px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--ng-dim);
+  opacity: 1;
+  padding: 9px 8px 10px;
+  border: none;
+  border-radius: 10px 10px 0 0;
+  background: transparent;
+  transition: color .15s ease, background .15s ease;
+}
+body.control #tabs::-webkit-scrollbar { display: none; } /* still scrollable on narrow windows */
+body.control #tabs button:hover { color: #fff; background: rgba(46, 242, 255, 0.06); }
+body.control #tabs button.active {
+  color: #fff;
+  background: linear-gradient(180deg, rgba(46, 242, 255, 0.16), rgba(46, 242, 255, 0.02));
+  text-shadow: 0 0 10px rgba(46, 242, 255, 0.7);
+  border-bottom-color: transparent;
+}
+body.control #tabs button.active::after {
+  content: ''; position: absolute; left: 8px; right: 8px; bottom: 0; height: 2px;
+  border-radius: 2px; background: var(--ng-grad);
+  box-shadow: 0 0 10px rgba(46, 242, 255, 0.9), 0 0 18px rgba(255, 43, 214, 0.5);
+}
+
+/* ---------- panels ---------- */
+body.control .tab-panel.active { gap: 14px; padding: 16px; animation: ng-in .22s ease-out; }
+@keyframes ng-in { from { opacity: 0; transform: translateY(4px); } }
+body.control .tab-panel section {
+  position: relative;
+  padding: 14px 14px 13px;
+  border-radius: 16px;
+  border: 1px solid transparent;
+  /* glass fill + gradient hairline border */
+  background:
+    linear-gradient(var(--ng-panel), var(--ng-panel)) padding-box,
+    linear-gradient(135deg, rgba(46, 242, 255, 0.45), rgba(77, 124, 255, 0.12) 40%, rgba(255, 43, 214, 0.35)) border-box;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+body.control .tab-panel section::before { /* HUD corner bracket */
+  content: ''; position: absolute; top: 7px; left: 7px; width: 12px; height: 12px;
+  border-top: 2px solid var(--ng-cyan); border-left: 2px solid var(--ng-cyan);
+  border-top-left-radius: 6px; opacity: 0.8;
+  filter: drop-shadow(0 0 4px rgba(46, 242, 255, 0.8));
+  pointer-events: none;
+}
+
+/* section labels = HUD captions */
+body.control label {
+  font-family: var(--ng-ui);
+  font-weight: 700;
+  font-size: 11.5px;
+  letter-spacing: 1.6px;
+  color: #9fdcff;
+  opacity: 0.9;
+}
+body.control section > label:first-child { padding-left: 14px; }
+body.control label span { color: #fff; font-family: var(--ng-display); font-weight: 600; font-size: 10.5px; letter-spacing: 0.5px; }
+body.control .chk { font-weight: 600; font-size: 13px; color: var(--ng-text); }
+
+/* ---------- buttons & selects ---------- */
+body.control button,
+body.control select {
+  font-family: var(--ng-ui);
+  font-weight: 600;
+  font-size: 13.5px;
+  letter-spacing: 0.4px;
+  color: var(--ng-text);
+  background: linear-gradient(180deg, rgba(30, 40, 72, 0.75), rgba(14, 18, 36, 0.85));
+  border: 1px solid rgba(120, 200, 255, 0.22);
+  border-radius: 10px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  transition: border-color .15s ease, box-shadow .15s ease, background .15s ease, transform .08s ease;
+}
+body.control button:hover:not(:disabled),
+body.control select:hover {
+  border-color: rgba(46, 242, 255, 0.75);
+  box-shadow: var(--ng-glow-c), inset 0 0 10px rgba(46, 242, 255, 0.08);
+  background: linear-gradient(180deg, rgba(36, 52, 92, 0.85), rgba(16, 22, 44, 0.9));
+}
+body.control button:active:not(:disabled) { transform: translateY(1px) scale(0.99); }
+body.control button.active {
+  color: #fff;
+  border-color: transparent;
+  background:
+    linear-gradient(180deg, rgba(30, 20, 60, 0.9), rgba(16, 12, 36, 0.9)) padding-box,
+    linear-gradient(90deg, var(--ng-cyan), var(--ng-mag)) border-box;
+  border: 1px solid transparent;
+  box-shadow: var(--ng-glow-m);
+  text-shadow: 0 0 8px rgba(255, 43, 214, 0.7);
+}
+body.control button.wide { padding: 9px 12px; }
+body.control button:focus-visible,
+body.control select:focus-visible,
+body.control input:focus-visible { outline: none; box-shadow: 0 0 0 2px rgba(46, 242, 255, 0.55), var(--ng-glow-c); }
+
+/* the big REC / Play buttons get a little extra presence */
+body.control #btn-rec, body.control #btn-play {
+  font-family: var(--ng-display); font-weight: 600; font-size: 12.5px; letter-spacing: 1.5px; text-transform: uppercase;
+}
+body.control #btn-rec { border-color: rgba(255, 70, 110, 0.55); }
+body.control #btn-rec:hover:not(:disabled) { border-color: #ff4d7a; box-shadow: 0 0 16px rgba(255, 77, 122, 0.55); }
+
+body.control select {
+  background-color: #0e1426;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--ng-cyan) 50%),
+    linear-gradient(135deg, var(--ng-cyan) 50%, transparent 50%),
+    linear-gradient(180deg, rgba(30, 40, 72, 0.75), rgba(14, 18, 36, 0.85));
+  background-position: calc(100% - 15px) 52%, calc(100% - 10px) 52%, 0 0;
+  background-size: 5px 5px, 5px 5px, 100% 100%;
+  background-repeat: no-repeat;
+  padding-right: 26px;
+}
+body.control select option { background: #0b1022; color: var(--ng-text); }
+body.control #map-grid { padding-right: 24px; } /* room for the chevron */
+
+/* ---------- text inputs ---------- */
+body.control .textfield,
+body.control input[type=text],
+body.control input[type=number] {
+  font-family: var(--ng-ui);
+  font-weight: 600;
+  color: #fff;
+  background: rgba(4, 8, 20, 0.7);
+  border: 1px solid rgba(120, 200, 255, 0.2);
+  border-radius: 9px;
+  box-shadow: inset 0 0 12px rgba(0, 0, 0, 0.5);
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+body.control .textfield:focus,
+body.control input[type=text]:focus,
+body.control input[type=number]:focus { outline: none; border-color: var(--ng-cyan); box-shadow: inset 0 0 12px rgba(0,0,0,.5), var(--ng-glow-c); }
+body.control .textfield::placeholder { color: rgba(160, 200, 255, 0.35); }
+body.control input[type=color] { border-radius: 8px; border: 1px solid rgba(120, 200, 255, 0.3); background: transparent; }
+
+/* ---------- checkboxes ---------- */
+body.control input[type=checkbox] {
+  appearance: none; -webkit-appearance: none;
+  flex: 0 0 auto;
+  width: 16px; height: 16px; margin: 0;
+  border-radius: 5px;
+  border: 1.5px solid rgba(120, 200, 255, 0.5);
+  background: rgba(4, 8, 20, 0.8);
+  display: inline-grid; place-content: center;
+  cursor: pointer;
+  transition: all .15s ease;
+}
+body.control input[type=checkbox]::after {
+  content: ''; width: 8px; height: 8px; border-radius: 2px;
+  transform: scale(0); transition: transform .12s ease;
+  background: var(--ng-grad);
+}
+body.control input[type=checkbox]:checked {
+  border-color: var(--ng-cyan);
+  box-shadow: 0 0 10px rgba(46, 242, 255, 0.6);
+}
+body.control input[type=checkbox]:checked::after { transform: scale(1); }
+
+/* ---------- range sliders: neon rail + glowing knob ---------- */
+body.control input[type=range] {
+  -webkit-appearance: none; appearance: none;
+  height: 22px; background: transparent; cursor: pointer;
+}
+body.control input[type=range]::-webkit-slider-runnable-track {
+  height: 4px; border-radius: 4px;
+  background: linear-gradient(90deg, rgba(46, 242, 255, 0.7), rgba(77, 124, 255, 0.55), rgba(255, 43, 214, 0.6));
+  box-shadow: 0 0 8px rgba(46, 242, 255, 0.25);
+}
+body.control input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 16px; height: 16px; margin-top: -6px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #ffffff, #bff8ff 40%, var(--ng-cyan) 75%);
+  border: 2px solid #04121c;
+  box-shadow: 0 0 0 2px rgba(46, 242, 255, 0.55), 0 0 14px rgba(46, 242, 255, 0.9);
+  transition: transform .1s ease;
+}
+body.control input[type=range]:hover::-webkit-slider-thumb { transform: scale(1.15); }
+body.control input[type=range]:disabled { opacity: 0.4; }
+
+/* ---------- level meters: segmented LED bars ---------- */
+body.control .meter span { font-family: var(--ng-display); font-weight: 600; font-size: 9.5px; letter-spacing: 1px; color: #9fdcff; opacity: 0.85; }
+body.control .meter .bar {
+  height: 12px; border-radius: 3px;
+  background: repeating-linear-gradient(90deg, rgba(120, 200, 255, 0.10) 0 6px, transparent 6px 8px);
+  box-shadow: inset 0 0 6px rgba(0, 0, 0, 0.6);
+}
+body.control .meter .bar i {
+  border-radius: 2px;
+  background: linear-gradient(90deg, var(--ng-lime), var(--ng-cyan) 45%, var(--ng-blue) 70%, var(--ng-mag));
+  -webkit-mask: repeating-linear-gradient(90deg, #000 0 6px, transparent 6px 8px);
+          mask: repeating-linear-gradient(90deg, #000 0 6px, transparent 6px 8px);
+  filter: drop-shadow(0 0 6px rgba(46, 242, 255, 0.8));
+}
+
+/* ---------- effect library ---------- */
+body.control .effect-list { border-color: var(--ng-line); background: rgba(3, 6, 16, 0.5); border-radius: 12px; }
+body.control .fx { font-weight: 600; font-size: 13px; border: 1px solid transparent; transition: background .12s ease, border-color .12s ease; }
+body.control .fx:hover { background: rgba(46, 242, 255, 0.07); border-color: rgba(46, 242, 255, 0.2); }
+body.control .fx.active {
+  background: linear-gradient(90deg, rgba(46, 242, 255, 0.18), rgba(255, 43, 214, 0.12));
+  border-color: rgba(46, 242, 255, 0.55);
+  box-shadow: inset 3px 0 0 var(--ng-cyan), 0 0 12px rgba(46, 242, 255, 0.2);
+  color: #fff;
+}
+
+/* ---------- pads (launchpad) ---------- */
+body.control .pad {
+  border-radius: 12px;
+  border-color: rgba(120, 200, 255, 0.18);
+  background: radial-gradient(circle at 50% 120%, rgba(77, 124, 255, 0.12), rgba(6, 10, 24, 0.8) 70%);
+  font-weight: 600;
+}
+body.control .pad:hover { border-color: rgba(46, 242, 255, 0.6); box-shadow: var(--ng-glow-c); }
+body.control .pad.filled { border-color: rgba(77, 124, 255, 0.55); background: radial-gradient(circle at 50% 120%, rgba(77, 124, 255, 0.35), rgba(8, 12, 30, 0.85) 70%); }
+body.control .pad.active {
+  border-color: var(--ng-mag);
+  background: radial-gradient(circle at 50% 110%, rgba(255, 43, 214, 0.55), rgba(40, 8, 40, 0.85) 75%);
+  box-shadow: 0 0 18px rgba(255, 43, 214, 0.7), inset 0 0 14px rgba(255, 43, 214, 0.4);
+}
+
+/* ---------- playlist tracks ---------- */
+body.control .track {
+  border-radius: 12px;
+  border-color: rgba(120, 200, 255, 0.14);
+  background: linear-gradient(180deg, rgba(16, 22, 44, 0.75), rgba(8, 12, 26, 0.75));
+  font-size: 13px;
+}
+body.control .track:hover { border-color: rgba(46, 242, 255, 0.35); }
+body.control .track.playing {
+  border-color: rgba(46, 242, 255, 0.7);
+  box-shadow: 0 0 16px rgba(46, 242, 255, 0.25), inset 3px 0 0 var(--ng-cyan);
+}
+body.control .track .tprog { height: 3px; background: var(--ng-grad); box-shadow: 0 0 8px rgba(46, 242, 255, 0.9); }
+body.control .track .ttime { font-family: var(--ng-display); font-weight: 600; font-size: 10px; color: var(--ng-cyan); opacity: 0.9; }
+body.control .scene-editor {
+  border-color: rgba(255, 43, 214, 0.4);
+  background: linear-gradient(180deg, rgba(40, 14, 54, 0.45), rgba(12, 10, 30, 0.55));
+  box-shadow: 0 0 18px rgba(255, 43, 214, 0.12);
+}
+body.control .scene-editor .se-title { font-family: var(--ng-display); font-weight: 600; font-size: 11.5px; letter-spacing: 1px; color: #ffd6f6; }
+body.control .scene-editor .cue { background: rgba(3, 6, 16, 0.55); border-color: rgba(120, 200, 255, 0.14); }
+
+/* ---------- mapping editor & list rows ---------- */
+body.control #map-editor { border-color: rgba(46, 242, 255, 0.35); box-shadow: 0 0 20px rgba(46, 242, 255, 0.12), inset 0 0 30px rgba(0, 0, 0, 0.6); }
+body.control .map-zone, body.control .aux-row { border-color: rgba(120, 200, 255, 0.16); background: rgba(6, 10, 24, 0.5); }
+body.control .map-zone.sel { border-color: var(--ng-cyan); background: rgba(46, 242, 255, 0.08); box-shadow: var(--ng-glow-c); }
+
+/* ---------- recording status ---------- */
+body.control .rec-status { font-family: var(--ng-display); font-weight: 600; letter-spacing: 1px; }
+
+/* ---------- footer hints ---------- */
+body.control #hints { border-top: 1px solid var(--ng-line); background: rgba(4, 6, 14, 0.75); color: var(--ng-dim); opacity: 1; font-size: 11.5px; }
+body.control kbd {
+  font-family: var(--ng-display); font-weight: 600; font-size: 9.5px;
+  color: var(--ng-cyan);
+  background: rgba(46, 242, 255, 0.07);
+  border: 1px solid rgba(46, 242, 255, 0.35);
+  border-radius: 5px;
+  box-shadow: 0 0 6px rgba(46, 242, 255, 0.2);
+}
+
+/* ---------- details (guides) ---------- */
+body.control details > summary { cursor: pointer; font-weight: 700; color: #9fdcff; letter-spacing: 0.5px; }
+body.control details[open] > summary { color: var(--ng-cyan); text-shadow: 0 0 8px rgba(46, 242, 255, 0.6); }
+
+/* ---------- scrollbars ---------- */
+body.control ::-webkit-scrollbar { width: 9px; height: 9px; }
+body.control ::-webkit-scrollbar-track { background: transparent; }
+body.control ::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(46, 242, 255, 0.45), rgba(255, 43, 214, 0.45));
+  border-radius: 9px; border: 2px solid transparent; background-clip: padding-box;
+}
+body.control ::-webkit-scrollbar-thumb:hover { background: linear-gradient(180deg, var(--ng-cyan), var(--ng-mag)); background-clip: padding-box; }
+
+@media (prefers-reduced-motion: reduce) {
+  body.control *, body.control *::before, body.control *::after { animation: none !important; transition: none !important; }
+}
