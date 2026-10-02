@@ -105,7 +105,8 @@ function composeFrame() {
     try { recCtx.drawImage(mapping.canvas, mr.x * sx, mr.y * sy, mr.width * sx, mr.height * sy); } catch (e) {}
   }
 
-  if (bgVideo.classList.contains('show') && bgVideo.readyState >= 2 && bgVideo.videoWidth) {
+  const vidsInMap = mapOn && mapping; // videos are composited into the zones
+  if (!vidsInMap && bgVideo.classList.contains('show') && bgVideo.readyState >= 2 && bgVideo.videoWidth) {
     recCtx.globalAlpha = parseFloat(getComputedStyle(bgVideo).opacity) || 1;
     const bm = bgVideo.style.mixBlendMode;
     recCtx.globalCompositeOperation = (bm && bm !== 'normal') ? bm : 'source-over';
@@ -114,7 +115,7 @@ function composeFrame() {
     recCtx.globalCompositeOperation = 'source-over';
   }
 
-  if (trackVideo.classList.contains('show') && trackVideo.readyState >= 2 && trackVideo.videoWidth) {
+  if (!vidsInMap && trackVideo.classList.contains('show') && trackVideo.readyState >= 2 && trackVideo.videoWidth) {
     recCtx.globalAlpha = parseFloat(getComputedStyle(trackVideo).opacity) || 1;
     const bm = trackVideo.style.mixBlendMode;
     recCtx.globalCompositeOperation = (bm && bm !== 'normal') ? bm : 'source-over';
@@ -388,6 +389,7 @@ djv.onControl(async (m) => {
     case 'mapOn':
       mapOn = !!m.on;
       $('#map-canvas').classList.toggle('show', mapOn);
+      mapLayerOrder(mapOn);
       break;
     case 'mapEdit':
       if (mapping) mapping.editOn = !!m.on;
@@ -649,7 +651,10 @@ function frame() {
   const a = audio.values;
   avTick(performance.now());
   viz.render(t * speed, a);
-  if (mapOn && mapping) mapping.render(t * speed, a);
+  if (mapOn && mapping) {
+    mapping.main = mapVisualSource();
+    mapping.render(t * speed, a);
+  }
 
   // Interactive family: tell the control panel if the camera didn't start
   // (permission denied / missing device). Mouse interaction still works.
@@ -719,6 +724,38 @@ requestAnimationFrame(frame);
 
 // ------------------------------------------------------------- mapping
 let mapping = null, mapOn = false;
+
+// Videos (VJ loop + playlist video track) are DOM layers above the WebGL
+// canvas: with mapping on they would cover the zones entirely, and the zones
+// would not contain them. So while mapping is on the map canvas is moved
+// ABOVE the video layers (they keep playing, just covered) and 'visual' zones
+// sample a 2D composite of effect + videos, blended exactly like on screen.
+let mapSrc = null, mapSrcCtx = null;
+const mapCanvasEl = $('#map-canvas');
+function mapLayerOrder(on) {
+  if (on) trackVideo.after(mapCanvasEl);   // above both videos
+  else canvas.after(mapCanvasEl);          // back right above the visual
+}
+function videoLive(v) { return v.classList.contains('show') && v.readyState >= 2 && v.videoWidth; }
+function mapVisualSource() {
+  if (!videoLive(bgVideo) && !videoLive(trackVideo)) return canvas;
+  const W = canvas.width, H = canvas.height;
+  if (!mapSrc) { mapSrc = document.createElement('canvas'); mapSrcCtx = mapSrc.getContext('2d'); }
+  if (mapSrc.width !== W || mapSrc.height !== H) { mapSrc.width = W; mapSrc.height = H; }
+  const ctx = mapSrcCtx;
+  ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+  ctx.drawImage(canvas, 0, 0, W, H);
+  for (const [v, fit] of [[bgVideo, 'cover'], [trackVideo, 'contain']]) {
+    if (!videoLive(v)) continue;
+    ctx.globalAlpha = parseFloat(getComputedStyle(v).opacity) || 1;
+    const bm = v.style.mixBlendMode;
+    ctx.globalCompositeOperation = (bm && bm !== 'normal') ? bm : 'source-over';
+    try { drawMediaFit(ctx, v, W, H, v.style.objectFit || fit); } catch (e) {}
+  }
+  ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+  return mapSrc;
+}
+
 function ensureMapping() {
   if (!mapping) {
     mapping = new window.MappingSim($('#map-canvas'), canvas);

@@ -1008,3 +1008,6 @@ kbd {
 .aux-row .atx-b { flex: 0 0 auto; display: flex; align-items: center; gap: 3px; font-size: 11px; }
 .map-ed-info #map-straighten { width: auto; padding: 3px 10px; font-size: 11px; }
 body.control #map-grid { width: auto; flex: 0 0 auto; padding: 3px 8px; font-size: 11px; }
+/* With mapping on the map canvas sits above the video layers: an opaque
+   ground keeps semi-transparent zone pixels from revealing the raw video. */
+#map-canvas.show { background: #000; }
