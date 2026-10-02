@@ -401,6 +401,10 @@ djv.onControl(async (m) => {
       break;
     case 'mapSel': if (mapping) mapping.selected = m.index; break;
     case 'auxActive': auxActive = !!m.on; break;
+    // Panic controls (phone remote / panel): blackout fades everything to
+    // black above every layer; freeze holds the last visual frame.
+    case 'blackout': $('#blackout').classList.toggle('show', !!m.on); break;
+    case 'freeze': frozen = !!m.on; break;
     case 'glbAnims': viz.setClipFilter(m.names || []); break;
     case 'modelBpm': viz.setManualBpm(m.bpm || 0); break;
     case 'modelSpread': viz.setArmSpread(m.deg || 0); break;
@@ -599,7 +603,8 @@ djv.onControl(async (m) => {
 // ---------------------------------------------------------------- render loop
 const startTime = performance.now();
 let frames = 0, fpsT = performance.now(), fps = 0, lastReport = 0, prevBeat = 0, lastProgress = 0;
-let auxActive = false, lastAfr = 0; // aux outputs: relay audio only when some exist
+let auxActive = false, lastAfr = 0;
+let frozen = false; // 'freeze': stop rendering, the canvases keep the last frame // aux outputs: relay audio only when some exist
 
 // ---- Auto VJ: a director that adapts the visuals to the playing track ------
 // Uses the engine's musical features (mood/bpm/drop/beatCount): switches preset
@@ -654,8 +659,8 @@ function frame() {
   audio.update();
   const a = audio.values;
   avTick(performance.now());
-  viz.render(t * speed, a);
-  if (mapOn && mapping) {
+  if (!frozen) viz.render(t * speed, a);
+  if (mapOn && mapping && !frozen) {
     for (const id in zoneOv) if (zoneOv[id].text) zoneOv[id].text.render(a);
     mapping.main = mapVisualSource();
     mapping.render(t * speed, a);
@@ -702,7 +707,7 @@ function frame() {
   if (now - fpsT > 500) { fps = frames * 1000 / (now - fpsT); frames = 0; fpsT = now; }
   if (now - lastReport > 66) {
     lastReport = now;
-    djv.report({ type: 'meters', bass: a.bass, mid: a.mid, treble: a.treble, fps });
+    djv.report({ type: 'meters', bass: a.bass, mid: a.mid, treble: a.treble, fps, bpm: audio.bpm || 0 });
   }
   // Stop at the trim end point if one is set.
   audio.checkTrim();

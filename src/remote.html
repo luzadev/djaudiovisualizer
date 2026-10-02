@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#04050b" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="DJV Remote" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <title>DJV Remote</title>
+  <link rel="stylesheet" href="/remote.css" />
+</head>
+<body>
+  <header id="top">
+    <div class="brand">DJV <b>REMOTE</b></div>
+    <div class="top-right">
+      <span id="bpm">— BPM</span>
+      <span id="conn" class="conn" title="Connessione"></span>
+    </div>
+  </header>
+
+  <main>
+    <!-- now playing -->
+    <section class="card np">
+      <div class="cap">IN RIPRODUZIONE</div>
+      <div id="np-name" class="np-name">—</div>
+      <div class="np-bar"><i id="np-prog"></i></div>
+      <div class="np-times"><span id="np-cur">00:00</span><span id="np-rem">-00:00</span></div>
+      <div class="transport">
+        <button data-cmd="prev" aria-label="Brano precedente">⏮</button>
+        <button data-cmd="play" id="btn-play" class="big" aria-label="Play/Pausa">▶</button>
+        <button data-cmd="next" aria-label="Brano successivo">⏭</button>
+      </div>
+      <div class="meters">
+        <div class="mtr"><span>B</span><div class="bar"><i id="m-b"></i></div></div>
+        <div class="mtr"><span>M</span><div class="bar"><i id="m-m"></i></div></div>
+        <div class="mtr"><span>H</span><div class="bar"><i id="m-h"></i></div></div>
+      </div>
+    </section>
+
+    <!-- effects -->
+    <section class="card">
+      <div class="cap">EFFETTO</div>
+      <div id="fx-name" class="fx-name">—</div>
+      <div class="row3">
+        <button data-cmd="fxPrev">◀ FX</button>
+        <button data-cmd="fxRandom">🎲</button>
+        <button data-cmd="fxNext">FX ▶</button>
+      </div>
+      <div class="row2">
+        <button data-cmd="autoVj" id="btn-autovj">🤖 AUTO VJ</button>
+        <select id="fam"><option value="">Famiglia…</option></select>
+      </div>
+      <div class="cap sub" id="seq-cap" hidden>LA TUA SEQUENZA</div>
+      <div id="seq" class="grid"></div>
+    </section>
+
+    <!-- pads -->
+    <section class="card" id="pads-card" hidden>
+      <div class="cap">PAD <button class="mini" data-cmd="padStop">■ STOP</button></div>
+      <div id="pads" class="grid pads"></div>
+    </section>
+
+    <!-- mapping -->
+    <section class="card">
+      <div class="cap">MAPPATURA</div>
+      <div class="row2">
+        <button id="btn-map">🗺 MAPPATURA OFF</button>
+        <button id="btn-allzones">TUTTE LE ZONE</button>
+      </div>
+      <div id="zones" class="chips"></div>
+    </section>
+
+    <!-- playlist -->
+    <section class="card">
+      <div class="cap">PLAYLIST</div>
+      <ol id="tracks" class="tracks"></ol>
+    </section>
+  </main>
+
+  <!-- panic bar -->
+  <footer id="panic">
+    <button id="btn-blackout">⬛ BLACKOUT</button>
+    <button id="btn-freeze">❄️ FREEZE</button>
+  </footer>
+
+  <div id="offline" hidden>Connessione al Mac persa…<br /><small>riprovo da solo</small></div>
+  <script src="/remote.js"></script>
+</body>
+</html>

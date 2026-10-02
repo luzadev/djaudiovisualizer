@@ -1011,3 +1011,11 @@ body.control #map-grid { width: auto; flex: 0 0 auto; padding: 3px 8px; font-siz
 /* With mapping on the map canvas sits above the video layers: an opaque
    ground keeps semi-transparent zone pixels from revealing the raw video. */
 #map-canvas.show { background: #000; }
+
+/* Blackout (output + aux windows): fades everything to black, above all layers */
+#blackout {
+  position: fixed; inset: 0; background: #000;
+  opacity: 0; visibility: hidden; pointer-events: none;
+  transition: opacity 0.35s ease, visibility 0s linear 0.35s;
+}
+#blackout.show { opacity: 1; visibility: visible; transition: opacity 0.35s ease, visibility 0s; }

@@ -41,6 +41,7 @@
     "files": [
       "main.js",
       "preload.js",
+      "remote-server.js",
       "src/**/*",
       "svg/**/*",
       "models/**/*",
@@ -56,6 +57,8 @@
     "electron-builder": "^24.13.3"
   },
   "dependencies": {
-    "@mediapipe/tasks-vision": "^1.0.0"
+    "@mediapipe/tasks-vision": "^1.0.0",
+    "qrcode": "^1.5.4",
+    "ws": "^8.22.0"
   }
 }

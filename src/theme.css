@@ -383,3 +383,21 @@ body.control ::-webkit-scrollbar-thumb:hover { background: linear-gradient(180de
 @media (prefers-reduced-motion: reduce) {
   body.control *, body.control *::before, body.control *::after { animation: none !important; transition: none !important; }
 }
+
+/* Phone remote section (tab Schermo) */
+body.control .remote-box { display: flex; gap: 14px; align-items: flex-start; }
+body.control .remote-qr-wrap {
+  flex: 0 0 150px; height: 150px; border-radius: 12px; overflow: hidden;
+  display: grid; place-items: center;
+  background: rgba(4, 8, 20, 0.7);
+  border: 1px solid rgba(46, 242, 255, 0.35);
+  box-shadow: 0 0 18px rgba(46, 242, 255, 0.18);
+}
+body.control #remote-qr { width: 100%; height: 100%; image-rendering: pixelated; background: #fff; padding: 6px; box-sizing: border-box; }
+body.control #remote-qr-off { font-family: var(--ng-display); font-weight: 800; letter-spacing: 3px; color: rgba(160, 200, 255, 0.35); }
+body.control .remote-side { flex: 1; min-width: 0; }
+body.control .remote-url {
+  font-family: var(--ng-display); font-weight: 600; font-size: 11px; letter-spacing: 0.5px;
+  color: var(--ng-cyan); word-break: break-all; margin: 4px 0 6px; user-select: text;
+}
+body.control #remote-clients { color: var(--ng-lime); }

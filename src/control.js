@@ -2,7 +2,15 @@
 // It also receives reports (meters, fps, device list, play state).
 
 const $ = (s) => document.querySelector(s);
-const send = (msg) => djv.send(msg);
+// Some output state is only ever SENT (never reported back): remember it so
+// the panel and the phone remote can show it.
+const outState = { blackout: false, freeze: false, mapShow: null };
+const send = (msg) => {
+  if (msg.type === 'blackout') outState.blackout = !!msg.on;
+  else if (msg.type === 'freeze') outState.freeze = !!msg.on;
+  else if (msg.type === 'mapShow') outState.mapShow = Array.isArray(msg.ids) ? msg.ids : null;
+  djv.send(msg);
+};
 const filePath = (f) => djv.pathForFile(f);
 
 // ---------------------------------------------------------------- effects
@@ -2677,6 +2685,7 @@ djv.onReport((m) => {
       break;
     }
     case 'meters':
+      lastMeters = m;
       $('#m-bass').style.width = (m.bass * 100).toFixed(0) + '%';
       $('#m-mid').style.width = (m.mid * 100).toFixed(0) + '%';
       $('#m-treble').style.width = (m.treble * 100).toFixed(0) + '%';
@@ -2763,6 +2772,126 @@ djv.onReport((m) => {
       break;
   }
 });
+
+// ---------------------------------------------------------------- phone remote
+// The phone sends commands; they run through the SAME functions as the
+// panel's own buttons, so panel and phone can never disagree. A compact
+// state goes back at ~6 Hz while at least one phone is connected.
+let lastMeters = { bass: 0, mid: 0, treble: 0, bpm: 0 };
+let remoteOn = false, remoteClients = 0, remoteTimer = null;
+
+function setBlackout(on) {
+  send({ type: 'blackout', on });
+  $('#btn-blackout').classList.toggle('active', on);
+}
+function setFreeze(on) {
+  send({ type: 'freeze', on });
+  $('#btn-freeze').classList.toggle('active', on);
+}
+$('#btn-blackout').addEventListener('click', () => setBlackout(!outState.blackout));
+$('#btn-freeze').addEventListener('click', () => setFreeze(!outState.freeze));
+
+// Effects a remote may step through: everything but camera/3D families.
+const remoteFx = () => EFFECTS.list.filter(e => !e.isInteractive && !e.isModel3d);
+function remoteStepEffect(dir) {
+  if (sequence.length) {
+    const n = seqIndex < 0 ? (dir > 0 ? 0 : sequence.length - 1) : (seqIndex + dir + sequence.length) % sequence.length;
+    return applySeqIndex(n);
+  }
+  // no personal sequence: walk the presets of the current family
+  const fam = EFFECTS.list.filter(e => e.family === currentEffect.family);
+  const k = fam.indexOf(currentEffect);
+  applyEffect(fam[(k + dir + fam.length) % fam.length] || currentEffect);
+}
+
+function remoteCommand(m) {
+  switch (m.cmd) {
+    case '_clients':
+      remoteClients = m.n || 0;
+      $('#remote-clients').textContent = remoteClients ? '● ' + remoteClients + (remoteClients === 1 ? ' telefono' : ' telefoni') : '';
+      pushRemoteState();
+      break;
+    case 'play': togglePlayPause(); break;
+    case 'next': nextTrack(); break;
+    case 'prev': if (playlist.length) playIndex(Math.max(0, currentIndex - 1)); break;
+    case 'track': if (m.i >= 0 && m.i < playlist.length) playIndex(m.i); break;
+    case 'fxNext': remoteStepEffect(1); break;
+    case 'fxPrev': remoteStepEffect(-1); break;
+    case 'fxRandom': { const L = remoteFx(); applyEffect(L[Math.floor(Math.random() * L.length)]); break; }
+    case 'fxSeq': if (m.i >= 0 && m.i < sequence.length) applySeqIndex(m.i); break;
+    case 'fxFamily': {
+      const e = EFFECTS.list.find(x => x.family === m.fam && !x.isInteractive && !x.isModel3d);
+      if (e) applyEffect(e);
+      break;
+    }
+    case 'autoVj': avSend(!autoVjOn); break;
+    case 'pad': if (pads[m.i]) playPad(m.i); break;          // empty pads would open a file dialog on the Mac
+    case 'padStop': $('#btn-pad-stop').click(); break;
+    case 'mapOn':
+      mapCfg.on = !!m.on; mapSave(); $('#map-on').checked = mapCfg.on;
+      send({ type: 'mapShow', ids: null });
+      send({ type: 'mapOn', on: mapCfg.on });
+      break;
+    case 'mapShow':
+      send({ type: 'mapShow', ids: Array.isArray(m.ids) ? m.ids.map(Number) : null });
+      break;
+    case 'blackout': setBlackout(!!m.on); break;
+    case 'freeze': setFreeze(!!m.on); break;
+  }
+  pushRemoteState();
+}
+djv.onRemote(remoteCommand);
+
+let remoteFamilies = null;
+function pushRemoteState() {
+  if (!remoteOn || !remoteClients) return;
+  const tr = playlist[currentIndex];
+  if (!remoteFamilies) remoteFamilies = EFFECTS.families
+    .map((name, i) => ({ i, name }))
+    .filter(f => EFFECTS.list.some(e => e.family === f.i && !e.isInteractive && !e.isModel3d));
+  djv.remoteState({
+    track: tr ? { i: currentIndex, name: tr.name, cur: playCur, dur: playDur, playing: isPlaying } : null,
+    tracks: playlist.slice(0, 60).map(t => (t.isInterlude ? '✨ ' : '') + t.name),
+    effect: currentEffect ? currentEffect.name : '',
+    family: currentEffect ? currentEffect.family : -1,
+    families: remoteFamilies,
+    autoVj: autoVjOn,
+    seq: sequence.map(x => x.effect.name),
+    seqIndex,
+    pads: pads.map(p => p ? p.name : null),
+    activePad: padPlaying ? activePad : -1,
+    map: { on: !!mapCfg.on, zones: mapCfg.zones.map(z => ({ id: z.id, name: z.name || 'Zona' })), show: outState.mapShow },
+    blackout: outState.blackout, freeze: outState.freeze,
+    meters: { bass: lastMeters.bass || 0, mid: lastMeters.mid || 0, treble: lastMeters.treble || 0, bpm: lastMeters.bpm || 0 }
+  });
+}
+
+async function remoteShowInfo(info) {
+  remoteOn = !!(info && info.on);
+  $('#remote-toggle').textContent = remoteOn ? '⏹ Disattiva telecomando' : '▶ Attiva telecomando';
+  $('#remote-toggle').classList.toggle('active', remoteOn);
+  $('#remote-newkey').disabled = !remoteOn;
+  $('#remote-qr').hidden = !(remoteOn && info.qr);
+  $('#remote-qr-off').hidden = remoteOn && !!info.qr;
+  if (remoteOn && info.qr) $('#remote-qr').src = info.qr;
+  $('#remote-url').textContent = remoteOn
+    ? (info.urls && info.urls.length ? info.urls[0] : 'Nessuna rete: collega il Mac al Wi-Fi o all\'hotspot')
+    : (info && info.error ? '⚠ ' + info.error : '—');
+  if (!remoteOn) { remoteClients = 0; $('#remote-clients').textContent = ''; }
+  clearInterval(remoteTimer);
+  if (remoteOn) remoteTimer = setInterval(pushRemoteState, 160);
+}
+$('#remote-toggle').addEventListener('click', async () => {
+  remoteShowInfo(remoteOn ? await djv.remoteStop() : await djv.remoteStart());
+});
+$('#remote-newkey').addEventListener('click', async () => remoteShowInfo(await djv.remoteNewKey()));
+(async () => {
+  // switched on last time: bring it back with the same code
+  const info = await djv.remoteInfo();
+  if (info.on) remoteShowInfo(info);
+  else if (info.wanted) remoteShowInfo(await djv.remoteStart());
+  else remoteShowInfo(info);
+})();
 
 // ---------------------------------------------------------------- init
 renderLibrary();

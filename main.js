@@ -3,6 +3,8 @@ const path = require('path');
 const fs = require('fs');
 const { execFile } = require('child_process');
 const { pathToFileURL } = require('url');
+const crypto = require('crypto');
+const { RemoteServer } = require('./remote-server');
 
 // djvres:// serves the MediaPipe WASM runtime and the bundled pose model to
 // the renderer: fetch() does not work on file:// URLs, and the pose tracker
@@ -156,6 +158,7 @@ function createWindows() {
     controlWin = null;
     for (const win of auxWins.values()) { if (!win.isDestroyed()) win.destroy(); }
     auxWins.clear();
+    remote.stop();
     if (outputWin) outputWin.close();
     app.quit();
   });
@@ -411,6 +414,39 @@ ipcMain.handle('rec:openFolder', () => {
   shell.openPath(dir);
   return dir;
 });
+
+// --- Phone remote (LAN web page + WebSocket) ---
+// Commands from phones go to the panel, which runs them through its own code
+// paths; the panel pushes a compact state back for the phones to display.
+const remoteCfgFile = () => path.join(app.getPath('userData'), 'remote.json');
+function remoteCfg() {
+  try { return JSON.parse(fs.readFileSync(remoteCfgFile(), 'utf8')); } catch (e) { return {}; }
+}
+function saveRemoteCfg(c) { try { fs.writeFileSync(remoteCfgFile(), JSON.stringify(c)); } catch (e) {} }
+const remote = new RemoteServer({
+  srcDir: path.join(__dirname, 'src'),
+  onCommand: (m) => { if (controlWin && !controlWin.isDestroyed()) controlWin.webContents.send('remote', m); }
+});
+ipcMain.handle('remote:start', async () => {
+  const c = remoteCfg();
+  // the key survives restarts so a phone's home-screen shortcut keeps working
+  if (!c.key) c.key = crypto.randomBytes(6).toString('hex');
+  c.on = true; saveRemoteCfg(c);
+  try { return await remote.start(8787, c.key); } catch (e) { return { on: false, error: e.message }; }
+});
+ipcMain.handle('remote:stop', () => {
+  remote.stop();
+  const c = remoteCfg(); c.on = false; saveRemoteCfg(c);
+  return { on: false };
+});
+ipcMain.handle('remote:newKey', async () => {
+  // revoke: every phone that had the old code is disconnected and locked out
+  remote.stop();
+  const c = remoteCfg(); c.key = crypto.randomBytes(6).toString('hex'); c.on = true; saveRemoteCfg(c);
+  try { return await remote.start(8787, c.key); } catch (e) { return { on: false, error: e.message }; }
+});
+ipcMain.handle('remote:info', async () => (remote.running ? remote.info() : { on: false, wanted: !!remoteCfg().on }));
+ipcMain.on('remote:state', (_e, state) => remote.broadcast(state));
 
 // --- Pad bank persistence ---
 const padsFile = () => path.join(app.getPath('userData'), 'pads.json');

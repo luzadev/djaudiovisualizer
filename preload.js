@@ -50,5 +50,12 @@ contextBridge.exposeInMainWorld('djv', {
   // Convert Mixamo FBX files via Blender: animation clips / character models.
   convertAnim: (p) => ipcRenderer.invoke('anim:convert', p),
   convertModel: (p) => ipcRenderer.invoke('model:convert', p),
-  readFile: (path) => ipcRenderer.invoke('file:read', path)
+  readFile: (path) => ipcRenderer.invoke('file:read', path),
+  // Phone remote: LAN server control, incoming commands, outgoing state.
+  remoteStart: () => ipcRenderer.invoke('remote:start'),
+  remoteStop: () => ipcRenderer.invoke('remote:stop'),
+  remoteNewKey: () => ipcRenderer.invoke('remote:newKey'),
+  remoteInfo: () => ipcRenderer.invoke('remote:info'),
+  remoteState: (state) => ipcRenderer.send('remote:state', state),
+  onRemote: (cb) => ipcRenderer.on('remote', (_e, m) => cb(m))
 });

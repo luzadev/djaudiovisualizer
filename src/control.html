@@ -492,6 +492,26 @@
         </div>
       </section>
       <section class="span2">
+        <label>📱 Telecomando dal telefono <span id="remote-clients"></span></label>
+        <div class="remote-box">
+          <div class="remote-qr-wrap"><img id="remote-qr" alt="" hidden /><div id="remote-qr-off">OFF</div></div>
+          <div class="remote-side">
+            <div class="row">
+              <button id="remote-toggle">▶ Attiva telecomando</button>
+              <button id="remote-newkey" title="Genera un nuovo codice: i telefoni collegati col vecchio QR vengono scollegati">🔑 Nuovo codice</button>
+            </div>
+            <div id="remote-url" class="remote-url">—</div>
+            <div class="hint-mini">Inquadra il QR col telefono (stessa rete Wi-Fi del Mac, anche l'hotspot del telefono).
+              Si apre il telecomando nel browser: con "Aggiungi a Home" diventa un'icona. Il codice nel QR
+              protegge l'accesso; se macOS chiede di consentire connessioni in entrata, rispondi Consenti.</div>
+            <div class="row">
+              <button id="btn-blackout" title="Tutto nero, su ogni uscita">⬛ Blackout</button>
+              <button id="btn-freeze" title="Ferma il visual sull'ultimo fotogramma">❄️ Freeze</button>
+            </div>
+          </div>
+        </div>
+      </section>
+      <section class="span2">
         <label>Uscite multiple <small>— una finestra indipendente per ogni schermo in più</small></label>
         <div id="aux-list" class="aux-list"></div>
         <div class="hint-mini">Gli schermi collegati/scollegati vengono rilevati automaticamente.

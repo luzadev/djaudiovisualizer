@@ -12,6 +12,7 @@ const viz = new Visualizer(cv);
 const MY_ID = window.djv.displayId;
 
 let mode = 'follow';
+let frozen = false;   // 'freeze' from the remote/panel: hold the last frame
 let ownEffect = null;      // effect object for mode 'effect'
 let followEffect = null;   // last effect broadcast by the control panel
 
@@ -117,6 +118,8 @@ window.djv.onControl((m) => {
       applyText(m.text);
       break;
     }
+    case 'blackout': document.getElementById('blackout').classList.toggle('show', !!m.on); break;
+    case 'freeze': frozen = !!m.on; break;
     case 'auxFx': {
       // Scene cue targeted at aux outputs. displayId -1 = every aux window,
       // but follow-mode windows ignore the broadcast form: they receive the
@@ -134,7 +137,7 @@ function frame() {
   const now = performance.now();
   clockT += (now - clockAt) / 1000;
   clockAt = now;
-  if (mode === 'follow' || mode === 'effect') {
+  if ((mode === 'follow' || mode === 'effect') && !frozen) {
     viz.render(clockT, audioData || SILENT);
   }
   // Ticker letters glow with the music, same formula as the main output.
