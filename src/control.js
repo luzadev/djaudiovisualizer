@@ -659,6 +659,7 @@ function hasScene(tr) {
     (c.type === 'effect' && c.effectIndex != null) ||
     (c.type === 'text' && c.text && c.text.trim()) ||
     (c.type === 'image' && c.image) ||
+    (c.type === 'video' && c.path) ||
     c.type === 'map'));
 }
 function parseTime(str) {
@@ -694,6 +695,45 @@ function optList(pairs, sel) {
 function newEffectEl(time) { return { type: 'effect', time, effectIndex: EFFECTS.list.indexOf(currentEffect), effectName: currentEffect.name, dur: 0, target: 'main' }; }
 function newTextEl(time) { return { type: 'text', time, text: '', dir: 'h', fx: 'none', font: TXT_FONTS[0][0], size: 6, weight: true, color: '#ffffff', pos: 'bottom', speed: 1, dur: 0 }; }
 // zones: null = every zone, otherwise the ids of the zones that show content
+function newVideoEl(time) {
+  return { type: 'video', time, path: null, dur: 0, target: mapCfg.zones.length ? 'zone:' + mapCfg.zones[0].id : 'main' };
+}
+// "Su" selector for text / image / video elements: main output or one zone.
+function cueTargetRow(c, allowMain) {
+  const tgt = String(c.target || 'main');
+  let o = allowMain ? '<option value="main"' + (tgt === 'main' ? ' selected' : '') + '>🖥 Principale (schermo pieno)</option>' : '';
+  mapCfg.zones.forEach(z => {
+    const v = 'zone:' + z.id;
+    o += '<option value="' + v + '"' + (tgt === v ? ' selected' : '') + '>🗺 Zona: ' + (z.name || 'Zona') + '</option>';
+  });
+  if (tgt.startsWith('zone:') && !mapCfg.zones.some(z => 'zone:' + z.id === tgt)) o += '<option value="' + tgt + '" selected>🗺 Zona eliminata</option>';
+  if (!o) o = '<option value="">— crea prima una zona nel tab Mappatura —</option>';
+  return '<div class="cue-row"><span class="cue-dim">Su</span><select class="cue-target" title="Dove mostrare questo elemento">' + o + '</select></div>';
+}
+const zoneIdOf = (k) => parseInt(String(k).slice(5), 10);
+function sceneActiveBy(type, t) {
+  const best = {};
+  for (const el of activeCues) {
+    if (el.type !== type || el.time > t) continue;
+    if (el.dur && el.time + el.dur <= t) continue;
+    const k = String(el.target || 'main');
+    if (!best[k] || el.time >= best[k].time) best[k] = el;
+  }
+  return best;
+}
+function advanceTargeted(type, t, apply) {
+  const cur = sceneActiveBy(type, t);
+  const force = lastScene[type] === undefined;
+  const prev = (lastScene[type] && typeof lastScene[type] === 'object' && !lastScene[type].type) ? lastScene[type] : {};
+  const keys = new Set([...Object.keys(cur), ...Object.keys(prev)]);
+  if (force && type !== 'video') keys.add('main'); // clear a stale full-screen text/image
+  keys.forEach(k => {
+    const el = cur[k] || null;
+    if (!force && prev[k] === el) return;
+    apply(k, el);
+  });
+  lastScene[type] = cur;
+}
 function newMapEl(time) { return { type: 'map', time, on: true, zones: null, dur: 0 }; }
 function newImageEl(time) { return { type: 'image', time, image: null, imageSize: 60, imagePos: 'center', dur: 0 }; }
 
@@ -716,7 +756,7 @@ function migrateCues(cues) {
 }
 
 // Runtime: re-evaluate which element is active per channel and diff-apply it.
-let lastScene = { effect: null, text: null, image: null, map: null };
+let lastScene = { effect: null, text: null, image: null, map: null, video: null };
 let userTrackBlend = 'normal'; // playlist-video blend chosen by the user
 let sentTrackBlend = null;     // last blend pushed to the output (auto or manual)
 
@@ -727,7 +767,8 @@ function startCues(tr) {
   // `undefined` (not null) forces advanceCues to APPLY every channel once, so a
   // stale text/image from the previous track is cleared even when the new scene
   // has nothing active at t=0.
-  lastScene = { effect: undefined, text: undefined, image: undefined, map: undefined };
+  lastScene = { effect: undefined, text: undefined, image: undefined, map: undefined, video: undefined };
+  send({ type: 'mapZoneReset' }); // zones fall back to their Mappatura content
   advanceCues(0);
 }
 function sceneActive(type, t) {
@@ -758,7 +799,7 @@ function applyEffectTo(targetKey, el) {
     // the zone runs this preset; 'no effect' gives it back its own content.
     const id = parseInt(targetKey.slice(5), 10);
     const ok = el.effectIndex != null && EFFECTS.list[el.effectIndex];
-    send({ type: 'mapZoneFx', id, effectIndex: ok ? el.effectIndex : null });
+    send({ type: 'mapZoneSet', id, kind: 'effect', data: ok ? { effectIndex: el.effectIndex } : null });
     return;
   }
   const e = EFFECTS.list[el.effectIndex];
@@ -804,10 +845,22 @@ function advanceCues(t) {
     const wantBlend = (effOn && userTrackBlend === 'normal') ? 'screen' : userTrackBlend;
     if (wantBlend !== sentTrackBlend) { sentTrackBlend = wantBlend; send({ type: 'trackVideoBlend', value: wantBlend }); }
   }
-  const tx = sceneActive('text', t);
-  if (tx !== lastScene.text) { lastScene.text = tx; applyTextEl(tx); }
-  const im = sceneActive('image', t);
-  if (im !== lastScene.image) { lastScene.image = im; applyImageEl(im); }
+  // Text / image / video: one channel per destination (main or a zone);
+  // when an element ends, its destination is cleared (unlike effects).
+  advanceTargeted('text', t, (k, el) => {
+    if (k === 'main') return applyTextEl(el);
+    send({ type: 'mapZoneSet', id: zoneIdOf(k), kind: 'text',
+      data: el && el.text && el.text.trim() ? { text: el.text, dir: el.dir, fx: el.fx, font: el.font,
+        size: el.size, weight: el.weight, color: el.color, pos: el.pos, speed: el.speed } : null });
+  });
+  advanceTargeted('image', t, (k, el) => {
+    if (k === 'main') return applyImageEl(el);
+    send({ type: 'mapZoneSet', id: zoneIdOf(k), kind: 'image', data: el && el.image ? { path: el.image } : null });
+  });
+  advanceTargeted('video', t, (k, el) => {
+    if (k === 'main') return; // videos are zone-only
+    send({ type: 'mapZoneSet', id: zoneIdOf(k), kind: 'video', data: el && el.path ? { path: el.path } : null });
+  });
   const mp = sceneActive('map', t);
   if (mp !== lastScene.map) {
     lastScene.map = mp;
@@ -850,7 +903,8 @@ function applyImageEl(el) {
 function refreshScenePreview(i) {
   if (i !== currentIndex) return;
   activeCues = (playlist[i].cues || []).slice().sort((a, b) => a.time - b.time);
-  lastScene = { effect: undefined, text: undefined, image: undefined, map: undefined };
+  lastScene = { effect: undefined, text: undefined, image: undefined, map: undefined, video: undefined };
+  send({ type: 'mapZoneReset' }); // re-applied below from the edited scene
   advanceCues(playCur || 0);
 }
 
@@ -1007,8 +1061,8 @@ function firstPresetOfFamily(fam) {
   return -1;
 }
 
-const EL_ICON = { effect: '🌀', text: '🔤', image: '🖼', map: '🗺' };
-const EL_LABEL = { effect: 'Effetto', text: 'Testo', image: 'Immagine', map: 'Mappatura' };
+const EL_ICON = { effect: '🌀', text: '🔤', image: '🖼', map: '🗺', video: '🎞' };
+const EL_LABEL = { effect: 'Effetto', text: 'Testo', image: 'Immagine', map: 'Mappatura', video: 'Video' };
 
 // Build the per-track scene editor: a list of independent timed elements
 // (effect / text / image), each with its own appearance time and duration.
@@ -1072,6 +1126,7 @@ function buildSceneEditor(tr, i, li) {
     } else if (c.type === 'text') {
       html +=
         '<div class="cue-body">' +
+          cueTargetRow(c, true) +
           '<input class="cue-text textfield" placeholder="Testo da mostrare" />' +
           '<div class="cue-row">' +
             '<select class="cue-tx-dir" title="Direzione">' + optList(TXT_DIRS, c.dir) + '</select>' +
@@ -1087,6 +1142,16 @@ function buildSceneEditor(tr, i, li) {
             '<input class="cue-tx-color" type="color" value="' + c.color + '" />' +
           '</div>' +
           '<div class="cue-row"><span class="cue-dim">Vel</span><input class="cue-tx-speed" type="range" min="0.2" max="4" step="0.1" value="' + c.speed + '" /></div>' +
+        '</div>';
+    } else if (c.type === 'video') {
+      html +=
+        '<div class="cue-body">' +
+          cueTargetRow(c, false) +
+          '<div class="cue-row">' +
+            '<button class="cue-vid">Carica video…</button>' +
+            '<button class="cue-vid-clear">✕</button>' +
+            '<span class="cue-name">' + (c.path ? baseName(c.path) : 'nessuno') + '</span>' +
+          '</div>' +
         '</div>';
     } else if (c.type === 'map') {
       html +=
@@ -1108,6 +1173,7 @@ function buildSceneEditor(tr, i, li) {
     } else {
       html +=
         '<div class="cue-body">' +
+          cueTargetRow(c, true) +
           '<div class="cue-row">' +
             '<button class="cue-img">Carica…</button>' +
             '<button class="cue-img-clear">✕</button>' +
@@ -1125,6 +1191,7 @@ function buildSceneEditor(tr, i, li) {
     '<button class="add-eff" title="Aggiungi effetto">➕🌀</button>' +
     '<button class="add-txt" title="Aggiungi testo">➕🔤</button>' +
     '<button class="add-img" title="Aggiungi immagine">➕🖼</button>' +
+    '<button class="add-vid" title="Aggiungi un video in una zona della mappatura">➕🎞</button>' +
     '<button class="add-map" title="Accendi/spegni la mappatura a questo punto">➕🗺</button>' +
     '<button class="se-clear">🗑 Scena</button>' +
   '</div>' +
@@ -1204,6 +1271,8 @@ function buildSceneEditor(tr, i, li) {
     });
 
     cueEl.querySelector('.cue-time').addEventListener('change', (e) => { c.time = parseTime(e.target.value); save(); });
+    const tSel = cueEl.querySelector('.cue-target');
+    if (tSel) tSel.addEventListener('change', (e) => { if (e.target.value) { c.target = e.target.value; saveLive(); } });
     cueEl.querySelector('.cue-dur').addEventListener('change', (e) => { c.dur = Math.max(0, parseFloat(e.target.value) || 0); saveLive(); });
     cueEl.querySelector('.cue-del').addEventListener('click', () => { cues.splice(ci, 1); save(); });
 
@@ -1235,6 +1304,17 @@ function buildSceneEditor(tr, i, li) {
       cueEl.querySelector('.cue-tx-bold').addEventListener('change', (e) => { c.weight = e.target.checked; saveLive(); });
       cueEl.querySelector('.cue-tx-color').addEventListener('input', (e) => { c.color = e.target.value; saveLive(); });
       cueEl.querySelector('.cue-tx-speed').addEventListener('input', (e) => { c.speed = parseFloat(e.target.value); saveLive(); });
+    } else if (c.type === 'video') {
+      cueEl.querySelector('.cue-vid').addEventListener('click', () => {
+        const inp = document.createElement('input');
+        inp.type = 'file'; inp.accept = 'video/*';
+        inp.addEventListener('change', () => {
+          const f = inp.files[0], p2 = f ? djv.pathForFile(f) : null;
+          if (p2) { c.path = p2; save(); }
+        });
+        inp.click();
+      });
+      cueEl.querySelector('.cue-vid-clear').addEventListener('click', () => { c.path = null; save(); });
     } else if (c.type === 'map') {
       cueEl.querySelector('.cue-map-on').addEventListener('change', (e) => { c.on = e.target.value === '1'; save(); });
       cueEl.querySelectorAll('.cue-map-z').forEach(cb => cb.addEventListener('change', () => {
@@ -1260,6 +1340,7 @@ function buildSceneEditor(tr, i, li) {
   ed.querySelector('.add-txt').addEventListener('click', () => addEl(newTextEl));
   ed.querySelector('.add-img').addEventListener('click', () => addEl(newImageEl));
   ed.querySelector('.add-map').addEventListener('click', () => addEl(newMapEl));
+  ed.querySelector('.add-vid').addEventListener('click', () => addEl(newVideoEl));
   ed.querySelector('.se-clear').addEventListener('click', () => { tr.cues = []; sceneEditing = -1; save(); });
   const gapInput = ed.querySelector('.cue-gap');
   if (gapInput) gapInput.addEventListener('change', (e) => { tr.gap = Math.max(0, parseFloat(e.target.value) || 0); savePlaylistState(); renderPlaylist(); });
@@ -2324,7 +2405,7 @@ function playPad(i) {
   clearGap();
   playbackOwner = 'pad';
   activePad = i; padPlaying = true;
-  activeCues = []; firedCue = -1; lastScene = { effect: null, text: null, image: null, map: null }; // pads don't run playlist cues
+  activeCues = []; firedCue = -1; lastScene = { effect: null, text: null, image: null, map: null, video: null }; // pads don't run playlist cues
   playCur = 0; playDur = durations[p.path] || 0;
   // The playlist is no longer the active source.
   currentIndex = -1; isPlaying = false; renderPlaylist();

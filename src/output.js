@@ -384,10 +384,10 @@ djv.onControl(async (m) => {
       mapShowIds = Array.isArray(m.ids) ? m.ids : null;
       applyMapZones();
       break;
-    case 'mapZoneFx':
-      // Playlist scene cue: live override of one zone's content.
-      if (m.effectIndex == null) delete mapOverrides[m.id];
-      else mapOverrides[m.id] = m.effectIndex;
+    case 'mapZoneSet': mapZoneSet(m.id, m.kind, m.data); break;
+    case 'mapZoneReset':
+      // new playlist track: every zone falls back to its Mappatura content
+      for (const id in zoneOv) dropZoneOv(id);
       applyMapZones();
       break;
     case 'mapOn':
@@ -656,6 +656,7 @@ function frame() {
   avTick(performance.now());
   viz.render(t * speed, a);
   if (mapOn && mapping) {
+    for (const id in zoneOv) if (zoneOv[id].text) zoneOv[id].text.render(a);
     mapping.main = mapVisualSource();
     mapping.render(t * speed, a);
   }
@@ -730,20 +731,69 @@ requestAnimationFrame(frame);
 let mapping = null, mapOn = false;
 // Zones as configured in the panel + live per-zone effect overrides set by
 // playlist scene cues (never written back to the panel's saved mapping).
-let lastMapZones = [], mapOverrides = {};
+let lastMapZones = [];
 let mapShowIds = null; // playlist scene: only these zone ids show content (null = all)
+// Per-zone content assigned by playlist scene elements:
+//   zoneOv[id] = { base: {kind:'effect'|'image'|'video', ...} | null,
+//                  text: ZoneText | null, video: <video> | null }
+// The base replaces the zone's own content; the text is an overlay on top.
+// The Mappatura tab content stays the default when nothing is assigned.
+const zoneOv = {};
+function zoneAspect(z) {
+  const c = z.corners, W = canvas.width || 1920, H = canvas.height || 1080;
+  const w = (Math.hypot((c[1][0]-c[0][0])*W, (c[1][1]-c[0][1])*H) + Math.hypot((c[2][0]-c[3][0])*W, (c[2][1]-c[3][1])*H)) / 2;
+  const h = (Math.hypot((c[3][0]-c[0][0])*W, (c[3][1]-c[0][1])*H) + Math.hypot((c[2][0]-c[1][0])*W, (c[2][1]-c[1][1])*H)) / 2;
+  return w / Math.max(1, h);
+}
+function stopZoneVideo(o) {
+  if (o && o.video) { try { o.video.pause(); o.video.removeAttribute('src'); o.video.load(); } catch (e) {} o.video = null; }
+}
+function dropZoneOv(id) { stopZoneVideo(zoneOv[id]); delete zoneOv[id]; }
+function mapZoneSet(id, kind, data) {
+  const o = zoneOv[id] || (zoneOv[id] = { base: null, text: null, video: null });
+  if (kind === 'text') {
+    if (!data) o.text = null;
+    else {
+      const z = lastMapZones.find(x => x.id === id);
+      (o.text = o.text || new window.ZoneText()).set(data, z ? zoneAspect(z) : 16 / 9);
+    }
+  } else if (!data) {
+    // clear only if the zone currently shows THIS kind of content
+    if (o.base && o.base.kind === kind) { if (kind === 'video') stopZoneVideo(o); o.base = null; }
+  } else {
+    if (o.base && o.base.kind === 'video' && !(kind === 'video' && o.base.path === data.path)) stopZoneVideo(o);
+    o.base = Object.assign({ kind }, data);
+    if (kind === 'video' && !o.video) {
+      const v = document.createElement('video');
+      v.muted = true; v.loop = true; v.playsInline = true;
+      v.src = toFileURL(data.path);
+      v.play().catch(() => {});
+      o.video = v;
+    }
+  }
+  if (!o.base && !o.text) dropZoneOv(id);
+  applyMapZones();
+}
 function applyMapZones() {
   try {
     ensureMapping().setZones(lastMapZones.map(z => {
-      const ov = mapOverrides[z.id];
-      const src = ov != null ? { type: 'effect', effectIndex: ov }
-        : (z.src && z.src.type === 'image'
+      const o = zoneOv[z.id], b = o && o.base;
+      let src, srcRect = z.srcRect;
+      if (b) {
+        srcRect = [0, 0, 1, 1]; // the 'Porzione' crop is for the live visual only
+        if (b.kind === 'effect') src = { type: 'effect', effectIndex: b.effectIndex };
+        else if (b.kind === 'image') src = { type: 'image', url: toFileURL(b.path), path: b.path };
+        else src = { type: 'media', el: o.video };
+      } else {
+        src = (z.src && z.src.type === 'image')
           ? { type: 'image', url: toFileURL(z.src.path), path: z.src.path }
           : (z.src && z.src.type === 'effect'
             ? { type: 'effect', effectIndex: z.src.effectIndex }
-            : { type: 'visual' }));
+            : { type: 'visual' });
+      }
       const hidden = mapShowIds && !mapShowIds.includes(z.id);
-      return Object.assign({}, z, { src, opacity: hidden ? 0 : z.opacity });
+      return Object.assign({}, z, { src, srcRect, opacity: hidden ? 0 : z.opacity,
+        overlay: o && o.text ? o.text.canvas : null });
     }));
   } catch (e) { djv.report({ type: 'error', message: 'Mappatura: ' + e.message }); }
 }
@@ -790,7 +840,8 @@ function ensureMapping() {
           (z.src.type === 'image' ? { type: 'image', path: z.src.path }
             : (z.src.type === 'effect' ? { type: 'effect', effectIndex: z.src.effectIndex }
               : { type: 'visual' })),
-        corners: z.corners, srcRect: z.srcRect,
+        corners: z.corners,
+        srcRect: ((lastMapZones.find(o => o.id === z.id) || {}).srcRect) || z.srcRect,
         opacity: ((lastMapZones.find(o => o.id === z.id) || {}).opacity) ?? z.opacity })) });
   }
   return mapping;

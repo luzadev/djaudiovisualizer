@@ -20,11 +20,13 @@ uniform mat3 uH;          // output coords -> unit square of the zone
 uniform sampler2D uTex;
 uniform float uOpacity;
 uniform vec4 uSrc;        // source sub-rect (x,y,w,h) in texture uv
+uniform float uUseAlpha;  // 1 = honour the texture's alpha (text overlays)
 void main(){
   vec3 q = uH * vec3(vZ, 1.0);
   vec2 uv = q.xy / q.z;
   if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) discard;
-  frag = vec4(texture(uTex, uSrc.xy + uv*uSrc.zw).rgb, uOpacity);
+  vec4 t = texture(uTex, uSrc.xy + uv*uSrc.zw);
+  frag = vec4(t.rgb, uOpacity * mix(1.0, t.a, uUseAlpha));
 }`;
 const H_VS = `#version 300 es
 in vec2 aPos; uniform float uPt;
@@ -84,7 +86,8 @@ class MappingSim {
     this.uQ = { uH: gl.getUniformLocation(this.progQ, 'uH'),
       uTex: gl.getUniformLocation(this.progQ, 'uTex'),
       uOpacity: gl.getUniformLocation(this.progQ, 'uOpacity'),
-      uSrc: gl.getUniformLocation(this.progQ, 'uSrc') };
+      uSrc: gl.getUniformLocation(this.progQ, 'uSrc'),
+      uUseAlpha: gl.getUniformLocation(this.progQ, 'uUseAlpha') };
     this.uH = { uCol: gl.getUniformLocation(this.progH, 'uCol'),
       uPt: gl.getUniformLocation(this.progH, 'uPt') };
     this.aQ = gl.getAttribLocation(this.progQ, 'aPos');
@@ -105,6 +108,8 @@ class MappingSim {
     this._mkTex = mkTex;
     this.imgTex = {};        // path -> {tex, ok}
     this.fx = {};            // zoneId -> {canvas, viz, tex, effectIndex} own engine
+    this.mediaTex = {};      // zoneId -> texture for src.type 'media' (a <video>)
+    this.ovTex = {};         // zoneId -> texture for the zone's text overlay canvas
     this.zones = [];
     this.editOn = false;
     this.selected = -1;
@@ -119,7 +124,8 @@ class MappingSim {
       src: z.src || { type: 'visual' },
       corners: (z.corners || [[0.25,0.25],[0.75,0.25],[0.75,0.75],[0.25,0.75]]).map(c => c.slice()),
       srcRect: z.srcRect || [0, 0, 1, 1],
-      opacity: z.opacity !== undefined ? z.opacity : 1
+      opacity: z.opacity !== undefined ? z.opacity : 1,
+      overlay: z.overlay || null   // optional canvas drawn on top (alpha)
     }));
     if (this.selected >= this.zones.length) this.selected = this.zones.length - 1;
     // per-zone effect engines: an independent Visualizer on an offscreen
@@ -235,6 +241,24 @@ class MappingSim {
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, f.canvas);
     }
 
+    // live media (videos) and text overlays refresh every frame
+    for (const z of this.zones) {
+      if (z.src.type === 'media' && z.src.el) {
+        const el = z.src.el;
+        if (el.readyState >= 2 && el.videoWidth) {
+          const t = this.mediaTex[z.id] || (this.mediaTex[z.id] = this._mkTex());
+          gl.bindTexture(gl.TEXTURE_2D, t);
+          gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, el);
+          z._mediaOk = true;
+        }
+      }
+      if (z.overlay) {
+        const t = this.ovTex[z.id] || (this.ovTex[z.id] = this._mkTex());
+        gl.bindTexture(gl.TEXTURE_2D, t);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, z.overlay);
+      }
+    }
+
     gl.viewport(0, 0, w, h);
     gl.clearColor(0, 0, 0, 1);
     gl.clear(gl.COLOR_BUFFER_BIT);
@@ -261,6 +285,8 @@ class MappingSim {
         const f = this.fx[z.id];
         if (!f) continue;
         tex = f.tex;
+      } else if (z.src.type === 'media') {
+        tex = z._mediaOk ? this.mediaTex[z.id] : null;
       }
       const c = z.corners;
       gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
@@ -271,9 +297,20 @@ class MappingSim {
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, tex);
       gl.uniform1i(this.uQ.uTex, 0);
-      gl.uniform1f(this.uQ.uOpacity, z.opacity);
-      gl.uniform4fv(this.uQ.uSrc, z.srcRect);
-      gl.drawArrays(gl.TRIANGLES, 0, 6);
+      gl.uniform1f(this.uQ.uUseAlpha, 0);
+      if (tex) {
+        gl.uniform1f(this.uQ.uOpacity, z.opacity);
+        gl.uniform4fv(this.uQ.uSrc, z.srcRect);
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+      }
+      // text overlay: same quad, full texture, alpha-blended on top
+      if (z.overlay && this.ovTex[z.id] && z.opacity > 0) {
+        gl.bindTexture(gl.TEXTURE_2D, this.ovTex[z.id]);
+        gl.uniform1f(this.uQ.uUseAlpha, 1);
+        gl.uniform1f(this.uQ.uOpacity, z.opacity);
+        gl.uniform4fv(this.uQ.uSrc, [0, 0, 1, 1]);
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+      }
     }
 
     if (this.editOn) {
