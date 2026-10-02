@@ -147,3 +147,18 @@ select { appearance: none; -webkit-appearance: none; width: 100%; background-col
 }
 #offline small { font-family: var(--ui); color: var(--dim); letter-spacing: 0; }
 [hidden] { display: none !important; }
+
+/* scene elements of the current track */
+.cap-hint { font-size: 10.5px; letter-spacing: 0.5px; color: var(--dim); font-weight: 600; }
+.cues { display: flex; flex-direction: column; gap: 7px; }
+.cue {
+  display: grid; grid-template-columns: 30px 52px 1fr; align-items: center; gap: 8px;
+  text-align: left; min-height: 52px; padding: 8px 12px; font-size: 14px;
+}
+.cue .ico { font-size: 20px; text-align: center; }
+.cue .at { font-family: var(--display); font-weight: 800; font-size: 11px; color: var(--cyan); }
+.cue .lbl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cue.live { border-color: var(--lime); box-shadow: inset 3px 0 0 var(--lime), 0 0 14px rgba(125, 255, 138, 0.3); color: #fff; }
+.cue.live .at { color: var(--lime); }
+.badge { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 8px; font-size: 11px;
+  border: 1px solid rgba(255, 43, 214, 0.5); color: #ffc6f4; }

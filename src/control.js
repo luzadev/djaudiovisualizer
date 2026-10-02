@@ -855,31 +855,63 @@ function advanceCues(t) {
   }
   // Text / image / video: one channel per destination (main or a zone);
   // when an element ends, its destination is cleared (unlike effects).
-  advanceTargeted('text', t, (k, el) => {
-    if (k === 'main') return applyTextEl(el);
-    send({ type: 'mapZoneSet', id: zoneIdOf(k), kind: 'text',
-      data: el && el.text && el.text.trim() ? { text: el.text, dir: el.dir, fx: el.fx, font: el.font,
-        size: el.size, weight: el.weight, color: el.color, pos: el.pos, speed: el.speed } : null });
-  });
-  advanceTargeted('image', t, (k, el) => {
-    if (k === 'main') return applyImageEl(el);
-    send({ type: 'mapZoneSet', id: zoneIdOf(k), kind: 'image', data: el && el.image ? { path: el.image } : null });
-  });
-  advanceTargeted('video', t, (k, el) => {
-    if (k === 'main') return; // videos are zone-only
-    send({ type: 'mapZoneSet', id: zoneIdOf(k), kind: 'video', data: el && el.path ? { path: el.path } : null });
-  });
+  advanceTargeted('text', t, applyTextTo);
+  advanceTargeted('image', t, applyImageTo);
+  advanceTargeted('video', t, applyVideoTo);
   const mp = sceneActive('map', t);
   if (mp !== lastScene.map) {
     lastScene.map = mp;
     // Apply-once like effects: when the element ends the state stays as is.
-    if (mp) {
-      mapCfg.on = !!mp.on;
-      $('#map-on').checked = mapCfg.on;
-      send({ type: 'mapShow', ids: mp.on && Array.isArray(mp.zones) ? mp.zones : null });
-      send({ type: 'mapOn', on: mapCfg.on });
-    }
+    if (mp) applyMapEl(mp);
   }
+}
+
+// One function per element type, shared by the timeline and by the phone
+// remote (which can fire any element of the current scene on demand).
+function applyTextTo(k, el) {
+  if (k === 'main') return applyTextEl(el);
+  send({ type: 'mapZoneSet', id: zoneIdOf(k), kind: 'text',
+    data: el && el.text && el.text.trim() ? { text: el.text, dir: el.dir, fx: el.fx, font: el.font,
+      size: el.size, weight: el.weight, color: el.color, pos: el.pos, speed: el.speed } : null });
+}
+function applyImageTo(k, el) {
+  if (k === 'main') return applyImageEl(el);
+  send({ type: 'mapZoneSet', id: zoneIdOf(k), kind: 'image', data: el && el.image ? { path: el.image } : null });
+}
+function applyVideoTo(k, el) {
+  if (k === 'main') return; // videos are zone-only
+  send({ type: 'mapZoneSet', id: zoneIdOf(k), kind: 'video', data: el && el.path ? { path: el.path } : null });
+}
+function applyMapEl(mp) {
+  mapCfg.on = !!mp.on;
+  $('#map-on').checked = mapCfg.on;
+  send({ type: 'mapShow', ids: mp.on && Array.isArray(mp.zones) ? mp.zones : null });
+  send({ type: 'mapOn', on: mapCfg.on });
+}
+function fireCue(el) {
+  const k = String(el.target || 'main');
+  if (el.type === 'effect') applyEffectTo(k, el);
+  else if (el.type === 'text') applyTextTo(k, el);
+  else if (el.type === 'image') applyImageTo(k, el);
+  else if (el.type === 'video') applyVideoTo(k, el);
+  else if (el.type === 'map') applyMapEl(el);
+}
+
+// Human-readable line for a scene element (phone remote list).
+function cueLabel(c) {
+  const tgt = String(c.target || 'main');
+  const z = tgt.startsWith('zone:') ? mapCfg.zones.find(x => 'zone:' + x.id === tgt) : null;
+  const where = z ? ' → ' + (z.name || 'Zona') : (tgt === 'all' ? ' → tutti' : '');
+  const fileName = (p) => p ? String(p).split(/[\\/]/).pop() : '—';
+  switch (c.type) {
+    case 'effect': return ((EFFECTS.list[c.effectIndex] || {}).name || 'nessun effetto') + where;
+    case 'text': return '"' + (c.text || '').trim() + '"' + where;
+    case 'image': return fileName(c.image) + where;
+    case 'video': return fileName(c.path) + where;
+    case 'map': return c.on ? 'Mappatura ON' + (Array.isArray(c.zones)
+      ? ' · ' + c.zones.map(id => (mapCfg.zones.find(x => x.id === id) || {}).name || id).join(', ') : '') : 'Mappatura OFF';
+  }
+  return c.type;
 }
 function applyTextEl(el) {
   const show = !!(el && el.text && el.text.trim());
@@ -2837,12 +2869,50 @@ function remoteCommand(m) {
       break;
     case 'blackout': setBlackout(!!m.on); break;
     case 'freeze': setFreeze(!!m.on); break;
+    case 'cue': {
+      // fire one element of the CURRENT track's scene right now
+      const tr = playlist[currentIndex];
+      const el = tr && tr.cues && tr.cues[m.i];
+      if (el) {
+        firedByHand.set(cueChannel(el), { el, base: timelineByChannel(sceneTime()).get(cueChannel(el)) || null });
+        fireCue(el);
+      }
+      break;
+    }
   }
   pushRemoteState();
 }
 djv.onRemote(remoteCommand);
 
 let remoteFamilies = null;
+// Current track's scene for the phone: sorted by time, with the elements
+// that are live right now flagged (same rules as the timeline).
+// Elements fired by hand from the phone: channel -> { el, base } where base
+// is what the timeline had on that channel at that moment. The fired element
+// counts as live until the timeline moves that channel on.
+const firedByHand = new Map();
+const cueChannel = (c) => c.type === 'map' ? 'map' : c.type + '|' + String(c.target || 'main');
+function timelineByChannel(t) {
+  const m = new Map();
+  if (!activeCues.length) return m;
+  Object.values(sceneActiveEffects(t)).forEach(e => m.set(cueChannel(e), e));
+  ['text', 'image', 'video'].forEach(ty => Object.values(sceneActiveBy(ty, t)).forEach(e => m.set(cueChannel(e), e)));
+  const mp = sceneActive('map', t); if (mp) m.set('map', mp);
+  return m;
+}
+const sceneTime = () => segTimer ? (segBase + (playCur || 0)) : (playCur || 0);
+function remoteScene(tr) {
+  if (!tr || !tr.cues || !tr.cues.length) return [];
+  const tl = timelineByChannel(sceneTime());
+  for (const [ch, f] of [...firedByHand]) {
+    if ((tl.get(ch) || null) !== f.base || !tr.cues.includes(f.el)) { firedByHand.delete(ch); continue; }
+    tl.set(ch, f.el);
+  }
+  const live = new Set(tl.values());
+  return tr.cues.map((c, i) => ({ i, type: c.type, time: c.time || 0, dur: c.dur || 0,
+    label: cueLabel(c), live: live.has(c) }))
+    .sort((a, b) => a.time - b.time);
+}
 function pushRemoteState() {
   if (!remoteOn || !remoteClients) return;
   const tr = playlist[currentIndex];
@@ -2852,6 +2922,8 @@ function pushRemoteState() {
   djv.remoteState({
     track: tr ? { i: currentIndex, name: tr.name, cur: playCur, dur: playDur, playing: isPlaying } : null,
     tracks: playlist.slice(0, 60).map(t => (t.isInterlude ? '✨ ' : '') + t.name),
+    sceneCounts: playlist.slice(0, 60).map(t => (t.cues || []).length),
+    scene: remoteScene(tr),
     effect: currentEffect ? currentEffect.name : '',
     family: currentEffect ? currentEffect.family : -1,
     families: remoteFamilies,

@@ -58,6 +58,20 @@
     $('#m-m').style.width = Math.min(100, s.meters.mid * 100) + '%';
     $('#m-h').style.width = Math.min(100, s.meters.treble * 100) + '%';
 
+    // scene of the current track
+    const sc = s.scene || [];
+    $('#scene-card').hidden = !sc.length;
+    if (changed('scene', sc.map(c => [c.i, c.type, c.time, c.label]))) {
+      const ICO = { effect: '🌀', text: '🔤', image: '🖼', video: '🎞', map: '🗺' };
+      $('#scene').innerHTML = sc.map(c => '<button class="cue" data-i="' + c.i + '">' +
+        '<span class="ico">' + (ICO[c.type] || '•') + '</span>' +
+        '<span class="at">' + fmt(c.time) + '</span>' +
+        '<span class="lbl">' + esc(c.label) + '</span></button>').join('');
+      $('#scene').querySelectorAll('.cue').forEach(b => b.addEventListener('click', () => cmd('cue', { i: +b.dataset.i })));
+    }
+    const liveSet = new Set(sc.filter(c => c.live).map(c => c.i));
+    $('#scene').querySelectorAll('.cue').forEach(b => b.classList.toggle('live', liveSet.has(+b.dataset.i)));
+
     // effects
     $('#fx-name').textContent = s.effect || '—';
     $('#btn-autovj').classList.toggle('on', !!s.autoVj);
@@ -107,8 +121,9 @@
     });
 
     // playlist
-    if (changed('tracks', s.tracks)) {
-      $('#tracks').innerHTML = s.tracks.map((n, i) => '<li data-i="' + i + '">' + (i + 1) + '. ' + esc(n) + '</li>').join('') ||
+    if (changed('tracks', [s.tracks, s.sceneCounts])) {
+      $('#tracks').innerHTML = s.tracks.map((n, i) => '<li data-i="' + i + '">' + (i + 1) + '. ' + esc(n) +
+        ((s.sceneCounts || [])[i] ? '<span class="badge">🎬 ' + s.sceneCounts[i] + '</span>' : '') + '</li>').join('') ||
         '<li style="opacity:.5">Playlist vuota</li>';
       $('#tracks').querySelectorAll('li[data-i]').forEach(li => li.addEventListener('click', () => cmd('track', { i: +li.dataset.i })));
     }
